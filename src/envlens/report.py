@@ -4,6 +4,7 @@ import json
 import sys
 from .analyzer import display_path, is_secret_name
 from .models import Analysis, EnvSpec
+from .presets import PRESETS
 
 
 def render_text(analysis: Analysis, use_color: bool | None = None) -> str:
@@ -204,6 +205,95 @@ def render_doctor(analysis: Analysis) -> str:
         for issue in matches[:8]:
             key = f" {issue.key}" if issue.key else ""
             lines.append(f"  -{key}: {issue.message}")
+    return "\n".join(lines)
+
+
+def render_explain(analysis: Analysis, key: str) -> str:
+    lines = [f"envlens explain {key}", ""]
+
+    issues = [issue for issue in analysis.issues if issue.key == key]
+    usages = [usage for usage in analysis.usages if usage.key == key]
+    spec = analysis.schema.specs.get(key) if analysis.schema and analysis.schema.exists else None
+    example = analysis.example_file.entries.get(key) if analysis.example_file and analysis.example_file.exists else None
+    env_entries = [env_file.entries[key] for env_file in analysis.env_files if key in env_file.entries]
+
+    if not any([issues, usages, spec, example, env_entries]):
+        return f"envlens explain {key}\n\nNo contract, env file entry, or source usage found for {key}."
+
+    if spec:
+        lines.append("Schema")
+        lines.append(f"- type: {spec.type}")
+        lines.append(f"- required: {'yes' if spec.required else 'no'}")
+        if spec.default is not None:
+            lines.append(f"- default: {spec.default}")
+        if spec.values:
+            lines.append(f"- values: {', '.join(spec.values)}")
+        if spec.description:
+            lines.append(f"- description: {spec.description}")
+        if spec.secret is not None:
+            lines.append(f"- secret: {spec.secret}")
+        if spec.public is not None:
+            lines.append(f"- public: {spec.public}")
+        lines.append("")
+
+    if example:
+        lines.append("Example")
+        lines.append(f"- {display_path(analysis.project_root, example.path)}:{example.line}")
+        lines.append("")
+
+    if env_entries:
+        lines.append("Env Files")
+        for entry in env_entries:
+            lines.append(f"- {display_path(analysis.project_root, entry.path)}:{entry.line}")
+        lines.append("")
+
+    if usages:
+        lines.append("Source Usage")
+        for usage in usages:
+            lines.append(f"- {display_path(analysis.project_root, usage.path)}:{usage.line} `{usage.expression}`")
+        lines.append("")
+
+    if issues:
+        lines.append("Findings")
+        for issue in issues:
+            location = ""
+            if issue.path:
+                location = f" ({display_path(analysis.project_root, issue.path)}"
+                if issue.line:
+                    location += f":{issue.line}"
+                location += ")"
+            lines.append(f"- {issue.severity}: {issue.code}: {issue.message}{location}")
+            if issue.hint:
+                lines.append(f"  hint: {issue.hint}")
+    else:
+        lines.append("Findings")
+        lines.append("- no issues for this key")
+
+    return "\n".join(lines)
+
+
+def render_presets(format: str = "text") -> str:
+    if format == "json":
+        payload = {
+            name: {
+                key: {
+                    "type": spec.type,
+                    "required": spec.required,
+                    "default": spec.default,
+                    "values": spec.values,
+                    "description": spec.description,
+                    "secret": spec.secret,
+                    "public": spec.public,
+                }
+                for key, spec in specs.items()
+            }
+            for name, specs in PRESETS.items()
+        }
+        return json.dumps(payload, indent=2, sort_keys=True)
+
+    lines = ["Available presets:"]
+    for name, specs in sorted(PRESETS.items()):
+        lines.append(f"- {name}: {', '.join(sorted(specs))}")
     return "\n".join(lines)
 
 

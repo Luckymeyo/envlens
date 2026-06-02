@@ -11,13 +11,16 @@ from .config import EnvLensConfig, load_config
 from .report import (
     render_docs,
     render_doctor,
+    render_explain,
     render_github,
     render_inferred_schema,
     render_json,
+    render_presets,
     render_sarif,
     render_summary,
     render_text,
 )
+from .schema_json import render_env_schema_json
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,7 +34,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_check_parser(subparsers)
     add_docs_parser(subparsers)
     add_doctor_parser(subparsers)
+    add_explain_parser(subparsers)
     add_init_schema_parser(subparsers)
+    add_list_presets_parser(subparsers)
+    add_schema_parser(subparsers)
     return parser
 
 
@@ -65,14 +71,30 @@ def add_doctor_parser(subparsers) -> None:
     add_common_args(parser)
 
 
+def add_explain_parser(subparsers) -> None:
+    parser = subparsers.add_parser("explain", help="Explain one env variable across source, schema, and env files.")
+    parser.add_argument("key", help="Environment variable key to explain.")
+    add_common_args(parser)
+
+
 def add_init_schema_parser(subparsers) -> None:
     parser = subparsers.add_parser("init-schema", help="Infer a starter env.schema.yml from code and .env.example.")
     add_common_args(parser)
 
 
+def add_list_presets_parser(subparsers) -> None:
+    parser = subparsers.add_parser("list-presets", help="List built-in framework presets.")
+    parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format.")
+
+
+def add_schema_parser(subparsers) -> None:
+    parser = subparsers.add_parser("schema", help="Print the JSON Schema for env.schema.yml files.")
+    parser.add_argument("--format", choices=["json"], default="json", help="Output format.")
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"check", "docs", "doctor", "init-schema"}
+    commands = {"check", "docs", "doctor", "explain", "init-schema", "list-presets", "schema"}
     if not argv or (argv[0] not in commands and argv[0] not in {"-h", "--help", "--version"}):
         argv = ["check", *argv]
 
@@ -110,8 +132,20 @@ def main(argv: list[str] | None = None) -> int:
         print(render_doctor(load_analysis(args, load_runtime_config(args))))
         return 0
 
+    if args.command == "explain":
+        print(render_explain(load_analysis(args, load_runtime_config(args)), args.key))
+        return 0
+
     if args.command == "init-schema":
         print(render_inferred_schema(load_analysis(args, load_runtime_config(args))), end="")
+        return 0
+
+    if args.command == "list-presets":
+        print(render_presets(args.format))
+        return 0
+
+    if args.command == "schema":
+        print(render_env_schema_json())
         return 0
 
     parser.print_help()

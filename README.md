@@ -223,7 +223,7 @@ Common options:
 --env .env                  Env file to validate. Can be repeated.
 --example .env.example      Example env contract file.
 --schema env.schema.yml     Typed schema file.
---format text               Output format: text, json, or github.
+--format text               Output format: text, json, github, or sarif.
 --strict                    Treat warnings as failures.
 --no-scan                   Skip source code scanning.
 ```
@@ -237,6 +237,9 @@ envlens check --format json
 envlens check --format github --strict
 envlens check --format sarif > envlens.sarif
 envlens check --preset nextjs --summary
+envlens explain DATABASE_URL
+envlens list-presets
+envlens schema
 ```
 
 ### `envlens docs`
@@ -274,6 +277,35 @@ envlens doctor
 ```
 
 This is useful after a noisy first run because it turns findings into a practical cleanup checklist.
+
+### `envlens explain`
+
+Explain one variable across schema, env files, source usage, and findings.
+
+```console
+envlens explain DATABASE_URL
+```
+
+This is useful when a single variable is confusing or appears in multiple places.
+
+### `envlens list-presets`
+
+List the built-in framework presets.
+
+```console
+envlens list-presets
+envlens list-presets --format json
+```
+
+### `envlens schema`
+
+Print the JSON Schema for `env.schema.yml` files.
+
+```console
+envlens schema
+```
+
+Use this to wire editor validation into VS Code, YAML Language Server, or custom automation.
 
 ## Output Formats
 
@@ -368,6 +400,12 @@ CLI flags override config values.
 
 `env.schema.yml` is a small YAML-like file where each top-level key is an environment variable.
 
+For editor validation, use the published JSON Schema:
+
+```text
+https://raw.githubusercontent.com/Luckymeyo/envlens/main/schemas/env.schema.json
+```
+
 ```yaml
 VARIABLE_NAME:
   type: string
@@ -418,6 +456,37 @@ envlens check --preset docker-compose
 ```
 
 Preset keys are optional by default and can still be overridden in `env.schema.yml`.
+
+## Capability Matrix
+
+| Capability | Local CLI | GitHub Action | JSON | SARIF | Docs |
+| --- | --- | --- | --- | --- | --- |
+| Detect env usage in source | yes | yes | yes | yes | yes |
+| Compare code with `.env.example` | yes | yes | yes | yes | yes |
+| Validate typed values | yes | yes | yes | yes | yes |
+| Explain one variable | yes | no | no | no | no |
+| Generate Markdown docs | yes | no | no | no | yes |
+| Publish Code Scanning results | no | yes | no | yes | no |
+| Editor schema support | yes | no | yes | no | yes |
+
+## Documentation
+
+- [Getting Started](docs/GETTING_STARTED.md)
+- [Configuration](docs/CONFIGURATION.md)
+- [GitHub Action](docs/GITHUB_ACTION.md)
+- [SARIF Output](docs/SARIF.md)
+- [Editor Integration](docs/EDITOR_INTEGRATION.md)
+- [Presets](docs/PRESETS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Release Process](docs/RELEASE_PROCESS.md)
+- [Roadmap](docs/ROADMAP.md)
+
+## Examples
+
+- [General mixed-language example](examples)
+- [Next.js example](examples/nextjs)
+- [FastAPI example](examples/fastapi)
+- [Monorepo example](examples/monorepo)
 
 ## Monorepo Examples
 
@@ -610,18 +679,29 @@ envlens/
     report.py       text, JSON, GitHub, and docs renderers
     scanner.py      source-code env usage scanner
     schema.py       schema loader and normalizer
+    schema_json.py  published JSON Schema renderer
   examples/         sample app and schema
+  schemas/          editor and automation schema files
   tests/            unit tests
 ```
 
 ## Roadmap
 
+Shipped in 0.2:
+
+- SARIF output for GitHub Code Scanning
+- GitHub Action packaging and step summaries
+- Framework presets for common stacks
+- `envlens doctor`, `envlens explain`, and `envlens list-presets`
+- Published JSON Schema/editor integration for `env.schema.yml`
+- Expanded docs, examples, and maintainer files
+
 Near term:
 
-- Add SARIF output for GitHub code scanning
-- Add framework presets for Next.js, Vite, FastAPI, Django, Laravel, and Docker Compose
 - Support multiple environment profiles, such as `.env.local`, `.env.test`, and `.env.production`
 - Add richer duplicate and case-collision reporting
+- Publish to PyPI
+- Add package manager installation docs
 
 Future:
 
