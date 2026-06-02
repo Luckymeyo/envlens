@@ -15,7 +15,7 @@ def parse_env_file(path: str | Path) -> EnvFile:
         return parsed
 
     seen: dict[str, int] = {}
-    for line_no, raw_line in enumerate(env_path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_no, raw_line in enumerate(env_path.read_text(encoding="utf-8-sig").splitlines(), start=1):
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -86,4 +86,3 @@ def _strip_inline_comment(value: str) -> str:
         if char == "#" and (index == 0 or value[index - 1].isspace()):
             return value[:index]
     return value
-

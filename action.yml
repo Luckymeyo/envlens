@@ -1,0 +1,81 @@
+name: envlens
+description: Validate environment variable contracts with envlens.
+author: Luckymeyo
+
+branding:
+  icon: search
+  color: blue
+
+inputs:
+  path:
+    description: Project path to inspect.
+    required: false
+    default: .
+  env:
+    description: Env file to validate. Leave empty to use envlens defaults.
+    required: false
+    default: ""
+  example:
+    description: Example env file.
+    required: false
+    default: .env.example
+  schema:
+    description: Typed env schema file.
+    required: false
+    default: env.schema.yml
+  preset:
+    description: Optional framework preset, such as nextjs, vite, django, fastapi, or docker-compose.
+    required: false
+    default: ""
+  format:
+    description: Output format: github, text, json, or sarif.
+    required: false
+    default: github
+  strict:
+    description: Treat warnings as failures.
+    required: false
+    default: "false"
+  summary:
+    description: Write a GitHub job summary.
+    required: false
+    default: "true"
+  python-version:
+    description: Python version used to run envlens.
+    required: false
+    default: "3.12"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install envlens
+      shell: bash
+      run: python -m pip install "${{ github.action_path }}"
+
+    - name: Run envlens
+      shell: bash
+      run: |
+        args=(check "${{ inputs.path }}" --format "${{ inputs.format }}")
+        if [ -n "${{ inputs.env }}" ]; then
+          args+=(--env "${{ inputs.env }}")
+        fi
+        if [ -n "${{ inputs.example }}" ]; then
+          args+=(--example "${{ inputs.example }}")
+        fi
+        if [ -n "${{ inputs.schema }}" ]; then
+          args+=(--schema "${{ inputs.schema }}")
+        fi
+        if [ -n "${{ inputs.preset }}" ]; then
+          args+=(--preset "${{ inputs.preset }}")
+        fi
+        if [ "${{ inputs.strict }}" = "true" ]; then
+          args+=(--strict)
+        fi
+        if [ "${{ inputs.summary }}" = "true" ]; then
+          args+=(--summary)
+        fi
+        envlens "${args[@]}"
+

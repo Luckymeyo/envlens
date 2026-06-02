@@ -15,9 +15,9 @@ PATTERNS: dict[str, list[re.Pattern[str]]] = {
         re.compile(rf"\bimport\.meta\.env\[['\"]{ENV_KEY}['\"]\]"),
     ],
     "python": [
-        re.compile(rf"\bos\.getenv\(['\"]{ENV_KEY}['\"]"),
+        re.compile(rf"\bos\.getenv\(['\"]{ENV_KEY}['\"](?:\s*,[^)]*)?\)"),
         re.compile(rf"\bos\.environ\[['\"]{ENV_KEY}['\"]\]"),
-        re.compile(rf"\bos\.environ\.get\(['\"]{ENV_KEY}['\"]"),
+        re.compile(rf"\bos\.environ\.get\(['\"]{ENV_KEY}['\"](?:\s*,[^)]*)?\)"),
     ],
     "go": [
         re.compile(rf"\bos\.Getenv\(['\"]{ENV_KEY}['\"]\)"),
@@ -25,7 +25,7 @@ PATTERNS: dict[str, list[re.Pattern[str]]] = {
     ],
     "ruby": [
         re.compile(rf"\bENV\[['\"]{ENV_KEY}['\"]\]"),
-        re.compile(rf"\bENV\.fetch\(['\"]{ENV_KEY}['\"]"),
+        re.compile(rf"\bENV\.fetch\(['\"]{ENV_KEY}['\"](?:\s*,[^)]*)?\)"),
     ],
     "php": [
         re.compile(rf"\bgetenv\(['\"]{ENV_KEY}['\"]\)"),
@@ -120,4 +120,3 @@ def _dedupe_usages(usages: list[EnvUsage]) -> list[EnvUsage]:
         seen.add(fingerprint)
         deduped.append(usage)
     return deduped
-

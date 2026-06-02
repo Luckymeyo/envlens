@@ -134,6 +134,20 @@ Run directly from a checkout:
 PYTHONPATH=src python -m envlens check examples --env examples/.env.example --example examples/.env.example --schema examples/env.schema.yml
 ```
 
+PowerShell:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m envlens check examples --env examples/.env.example --example examples/.env.example --schema examples/env.schema.yml
+```
+
+Windows cmd:
+
+```cmd
+set PYTHONPATH=src
+python -m envlens check examples --env examples/.env.example --example examples/.env.example --schema examples/env.schema.yml
+```
+
 ## Quick Start
 
 Create a sample contract:
@@ -221,6 +235,8 @@ envlens check
 envlens check apps/web --env apps/web/.env.local --schema apps/web/env.schema.yml
 envlens check --format json
 envlens check --format github --strict
+envlens check --format sarif > envlens.sarif
+envlens check --preset nextjs --summary
 ```
 
 ### `envlens docs`
@@ -248,6 +264,16 @@ envlens init-schema > env.schema.yml
 ```
 
 This is intentionally conservative. It gives you a first draft, then you add descriptions, enum values, and optional flags.
+
+### `envlens doctor`
+
+Print a remediation plan grouped by issue type.
+
+```console
+envlens doctor
+```
+
+This is useful after a noisy first run because it turns findings into a practical cleanup checklist.
 
 ## Output Formats
 
@@ -283,6 +309,31 @@ envlens check --format github
 
 Errors become workflow errors, warnings become workflow warnings, and info items become notices.
 
+### SARIF
+
+SARIF output for GitHub Code Scanning or other SARIF-compatible tools:
+
+```console
+envlens check --format sarif > envlens.sarif
+```
+
+In GitHub Actions, upload it with `github/codeql-action/upload-sarif`:
+
+```yaml
+- run: envlens check --format sarif > envlens.sarif
+- uses: github/codeql-action/upload-sarif@v4
+  with:
+    sarif_file: envlens.sarif
+```
+
+### GitHub Step Summary
+
+Add a Markdown summary to the Actions run:
+
+```console
+envlens check --format github --summary
+```
+
 ## Severity Model
 
 `envlens` uses three severities so teams can tune enforcement over time.
@@ -294,6 +345,24 @@ Errors become workflow errors, warnings become workflow warnings, and info items
 | info | Useful cleanup or schema completeness signal | zero exit |
 
 This lets you start with visibility, then move to enforcement once the contract is clean.
+
+## Configuration
+
+`envlens` reads `[tool.envlens]` from `pyproject.toml` in the project root.
+
+```toml
+[tool.envlens]
+env = [".env.local", ".env.test"]
+example = ".env.example"
+schema = "env.schema.yml"
+preset = ["nextjs"]
+ignore = ["EXTERNAL_PLATFORM_KEY"]
+format = "github"
+strict = true
+summary = true
+```
+
+CLI flags override config values.
 
 ## Schema Reference
 
@@ -336,6 +405,20 @@ Supported fields:
 
 Skipped directories include `.git`, `node_modules`, `.venv`, `vendor`, `dist`, `build`, `.next`, and cache folders.
 
+## Framework Presets
+
+Presets document common framework-provided keys so they do not need to appear in `.env.example`.
+
+```console
+envlens check --preset nextjs
+envlens check --preset vite
+envlens check --preset django
+envlens check --preset fastapi
+envlens check --preset docker-compose
+```
+
+Preset keys are optional by default and can still be overridden in `env.schema.yml`.
+
 ## Monorepo Examples
 
 Validate one app inside a monorepo:
@@ -372,6 +455,29 @@ steps:
 Use it alongside GitHub secret scanning, pre-commit hooks, or dedicated scanners if your project handles sensitive credentials.
 
 ## CI
+
+Use the GitHub Action:
+
+```yaml
+name: envlens
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  envlens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: Luckymeyo/envlens@main
+        with:
+          path: .
+          format: github
+          strict: "true"
+          summary: "true"
+```
 
 Use GitHub Actions annotations:
 
@@ -445,6 +551,12 @@ The implementation has no required third-party runtime dependencies, which keeps
 3. Add descriptions to the generated schema.
 4. Run `envlens docs > ENVIRONMENT.md`.
 5. Add a CI check in non-strict mode.
+
+### Publishing Code Scanning Results
+
+1. Run `envlens check --format sarif > envlens.sarif`.
+2. Upload the SARIF file in CI.
+3. Review env contract drift in the repository security/code scanning views.
 
 ## Design Principles
 

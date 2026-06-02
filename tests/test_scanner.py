@@ -23,7 +23,15 @@ class ScannerTests(unittest.TestCase):
 
             self.assertEqual(keys, {"DATABASE_URL", "NODE_ENV", "PUBLIC_API_URL", "PORT"})
 
+    def test_python_expression_includes_closing_call(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "app.py").write_text('import os\nos.getenv("PORT", "3000")\n', encoding="utf-8")
+
+            usages = scan_project(root)
+
+            self.assertEqual(usages[0].expression, 'os.getenv("PORT", "3000")')
+
 
 if __name__ == "__main__":
     unittest.main()
-

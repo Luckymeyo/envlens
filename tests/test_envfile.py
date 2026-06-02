@@ -9,6 +9,16 @@ from envlens.envfile import parse_env_file
 
 
 class EnvFileTests(unittest.TestCase):
+    def test_parse_utf8_bom_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / ".env"
+            path.write_text("DATABASE_URL=postgres://localhost/db\n", encoding="utf-8-sig")
+
+            parsed = parse_env_file(path)
+
+            self.assertFalse(parsed.problems)
+            self.assertIn("DATABASE_URL", parsed.entries)
+
     def test_parse_quotes_comments_and_duplicates(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / ".env"
@@ -35,4 +45,3 @@ class EnvFileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

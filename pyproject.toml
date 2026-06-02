@@ -39,6 +39,8 @@ envlens = "envlens.cli:main"
 where = ["src"]
 
 [tool.envlens]
+env = [".env"]
 example = ".env.example"
 schema = "env.schema.yml"
-
+format = "text"
+strict = false

@@ -5,7 +5,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .envfile import parse_env_file
-from .models import Analysis, EnvEntry, EnvFile, EnvSpec, EnvUsage, Issue
+from .models import Analysis, EnvEntry, EnvFile, EnvSpec, EnvUsage, Issue, Schema
+from .presets import PRESET_SOURCE, get_preset_specs
 from .scanner import scan_project
 from .schema import load_schema
 
@@ -41,16 +42,20 @@ def analyze_project(
     example_path: str | Path | None = ".env.example",
     schema_path: str | Path | None = "env.schema.yml",
     scan_code: bool = True,
+    preset_names: list[str] | None = None,
+    ignore_keys: list[str] | None = None,
 ) -> Analysis:
     root = Path(project_root).resolve()
+    ignored = set(ignore_keys or [])
     env_files = [parse_env_file(resolve_path(root, path)) for path in (env_paths or [".env"])]
     example_file = parse_env_file(resolve_path(root, example_path)) if example_path else None
-    schema = load_schema(resolve_path(root, schema_path)) if schema_path else None
-    usages = scan_project(root) if scan_code else []
+    schema = merge_preset_specs(load_schema(resolve_path(root, schema_path)) if schema_path else None, preset_names)
+    usages = [usage for usage in (scan_project(root) if scan_code else []) if usage.key not in ignored]
 
     issues: list[Issue] = []
     issues.extend(file_parse_issues(env_files, example_file, schema))
     issues.extend(contract_issues(root, env_files, example_file, schema, usages))
+    issues = [issue for issue in issues if issue.key not in ignored]
 
     return Analysis(
         project_root=root,
@@ -73,6 +78,23 @@ def resolve_path(root: Path, path: str | Path | None) -> Path | None:
     cwd_candidate = Path.cwd() / candidate
     if root_candidate.exists() or not cwd_candidate.exists():
         return root_candidate
+    try:
+        cwd_candidate.resolve().relative_to(root.resolve())
+        return cwd_candidate
+    except ValueError:
+        return root_candidate
+
+
+def merge_preset_specs(schema: Schema | None, preset_names: list[str] | None) -> Schema | None:
+    preset_specs = get_preset_specs(preset_names)
+    if not preset_specs:
+        return schema
+
+    merged = schema or Schema(path=None, exists=True)
+    merged.exists = True
+    for key, spec in preset_specs.items():
+        merged.specs.setdefault(key, spec)
+    return merged
     return cwd_candidate
 
 
@@ -187,7 +209,7 @@ def contract_issues(
             issues.extend(validate_entry(entry, spec, in_example=is_example_env))
 
     if example_file and example_file.exists:
-        for key in sorted(used_keys - example_keys):
+        for key in sorted(used_keys - example_keys - schema_keys):
             usage = usage_by_key[key][0]
             issues.append(
                 Issue(
@@ -236,6 +258,8 @@ def contract_issues(
 
         for key in sorted(schema_keys - used_keys - example_keys):
             spec = schema_specs[key]
+            if spec.source == PRESET_SOURCE:
+                continue
             issues.append(
                 Issue(
                     severity="info",

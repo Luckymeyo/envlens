@@ -60,6 +60,54 @@ def render_json(analysis: Analysis) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def render_sarif(analysis: Analysis) -> str:
+    rules = {}
+    results = []
+    for issue in analysis.issues:
+        rules.setdefault(
+            issue.code,
+            {
+                "id": issue.code,
+                "name": issue.code,
+                "shortDescription": {"text": issue.code.replace("-", " ").title()},
+                "help": {"text": issue.hint or issue.message},
+            },
+        )
+        result = {
+            "ruleId": issue.code,
+            "level": {"error": "error", "warning": "warning", "info": "note"}.get(issue.severity, "note"),
+            "message": {"text": issue.message},
+        }
+        if issue.path:
+            result["locations"] = [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": display_path(analysis.project_root, issue.path).replace("\\", "/")},
+                        "region": {"startLine": issue.line or 1},
+                    }
+                }
+            ]
+        results.append(result)
+
+    payload = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "envlens",
+                        "informationUri": "https://github.com/Luckymeyo/envlens",
+                        "rules": sorted(rules.values(), key=lambda rule: rule["id"]),
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+    return json.dumps(payload, indent=2, sort_keys=True)
+
+
 def render_github(analysis: Analysis) -> str:
     if not analysis.issues:
         return "No environment contract issues found."
@@ -103,6 +151,60 @@ def render_docs(analysis: Analysis) -> str:
             )
         )
     return "\n".join(rows)
+
+
+def render_summary(analysis: Analysis) -> str:
+    lines = [
+        "## envlens",
+        "",
+        "| Result | Count |",
+        "| --- | ---: |",
+        f"| Errors | {analysis.error_count} |",
+        f"| Warnings | {analysis.warning_count} |",
+        f"| Info | {analysis.info_count} |",
+        f"| Env usages found | {len(analysis.usages)} |",
+    ]
+    if analysis.issues:
+        lines.extend(["", "### Findings", "", "| Severity | Key | Code | Location |", "| --- | --- | --- | --- |"])
+        for issue in analysis.issues[:25]:
+            location = ""
+            if issue.path:
+                location = display_path(analysis.project_root, issue.path)
+                if issue.line:
+                    location += f":{issue.line}"
+            lines.append(
+                f"| {escape_markdown(issue.severity)} | {escape_markdown(issue.key or '-')} | "
+                f"{escape_markdown(issue.code)} | {escape_markdown(location)} |"
+            )
+    else:
+        lines.extend(["", "No environment contract issues found."])
+    return "\n".join(lines) + "\n"
+
+
+def render_doctor(analysis: Analysis) -> str:
+    if not analysis.issues:
+        return "envlens doctor\n\nNo environment contract issues found."
+
+    buckets = {
+        "missing-in-env": "Add missing required values to the target env file, or mark them `required: false` in `env.schema.yml`.",
+        "missing-in-example": "Add used keys to `.env.example`, or document external keys in `env.schema.yml`.",
+        "type-mismatch": "Update the env value or change the schema type if the schema is wrong.",
+        "unused-example": "Remove stale sample keys, or keep them documented in `env.schema.yml` if consumed externally.",
+        "undocumented-env": "Add local-only keys to `.env.example` or `env.schema.yml`.",
+        "public-secret-name": "Rename public client-side variables so secret-looking keys are never exposed to the browser.",
+        "secret-in-example": "Replace real-looking sample secrets with clear placeholders.",
+    }
+    lines = ["envlens doctor", "", "Recommended fixes:"]
+    for code, advice in buckets.items():
+        matches = [issue for issue in analysis.issues if issue.code == code]
+        if not matches:
+            continue
+        lines.append("")
+        lines.append(f"- {code}: {advice}")
+        for issue in matches[:8]:
+            key = f" {issue.key}" if issue.key else ""
+            lines.append(f"  -{key}: {issue.message}")
+    return "\n".join(lines)
 
 
 def render_inferred_schema(analysis: Analysis) -> str:
@@ -155,4 +257,3 @@ def escape_github(text: str) -> str:
 
 def escape_markdown(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
-
