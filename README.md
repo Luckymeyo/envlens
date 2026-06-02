@@ -1,44 +1,123 @@
 # envlens
 
+[![CI](https://github.com/Luckymeyo/envlens/actions/workflows/ci.yml/badge.svg)](https://github.com/Luckymeyo/envlens/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
+
 Find missing, stale, unsafe, and mistyped environment variables before they break production.
 
-`envlens` is a small CLI for treating environment variables like a contract. It scans your code for env usage, compares that against `.env`, `.env.example`, and an optional typed schema, then reports drift in a CI-friendly format.
+`envlens` treats environment variables like a contract. It scans your source code for env usage, compares that usage against `.env`, `.env.example`, and an optional typed schema, then reports drift in formats that work locally and in CI.
 
 ```console
 $ envlens check
 
-ERROR  DATABASE_URL  missing-in-env       required in .env.example but missing from .env
-ERROR  STRIPE_KEY    missing-in-example   used in src/billing.ts but missing from .env.example
-WARN   API_SECRET    secret-in-example    .env.example appears to contain a real secret
-WARN   OLD_FLAG      unused-example       listed in .env.example but not used in scanned code
+ERROR           DATABASE_URL             missing-in-env         DATABASE_URL is required but missing from .env
+ERROR           BILLING_TOKEN            missing-in-example     BILLING_TOKEN is used in src/billing.ts but missing from .env.example
+WARNING         OLD_FEATURE_FLAG         unused-example         OLD_FEATURE_FLAG is listed in .env.example but was not found in scanned code
+WARNING         PUBLIC_SECRET_KEY        public-secret-name     PUBLIC_SECRET_KEY looks public and secret at the same time
+INFO            CACHE_TTL                schema-missing-used    CACHE_TTL is used in code but has no schema entry
 
-4 issues found: 2 errors, 2 warnings
+5 issues found: 2 errors, 2 warnings, 1 info
 ```
 
-## Why
+## The Pitch
 
-Most projects discover env drift too late:
+Every growing codebase eventually develops environment drift:
 
-- a variable is used in code but missing from `.env.example`
-- production has a stale variable nobody uses
-- a secret leaks into a sample file
-- a port, URL, or enum value has the wrong type
-- CI passes while a deploy fails at boot
+- code reads a variable that nobody documented
+- `.env.example` keeps variables from features that were deleted months ago
+- deploys fail because a URL, port, boolean, or enum is malformed
+- public frontend env names accidentally look like private secret names
+- teammates waste time asking which keys are required for local setup
 
-`envlens` catches those problems close to the commit.
+`envlens` gives the project a single source of truth for configuration, without forcing a heavy framework or runtime dependency.
 
-## Features
+## Who It Is For
 
-- Scan source code for environment variable usage
-- Compare `.env`, `.env.example`, and `env.schema.yml`
-- Detect missing, extra, unused, empty, duplicate, and undocumented keys
-- Validate types: `string`, `number`, `integer`, `boolean`, `url`, `email`, and `enum`
-- Flag suspicious secret values and public secret names
-- Output human-readable text, JSON, or GitHub Actions annotations
-- Generate Markdown env documentation tables
-- No required third-party runtime dependencies
+`envlens` is useful when configuration has become bigger than a few obvious variables.
 
-## Quick Start
+| Team or project | How envlens helps |
+| --- | --- |
+| Solo projects | Keeps `.env.example` honest as features change |
+| Open-source repos | Makes local setup clearer for contributors |
+| Frontend teams | Catches public/private env naming mistakes |
+| Backend teams | Validates URLs, ports, booleans, and required secrets before deploys |
+| Platform teams | Adds a small CI gate without introducing a new service |
+| Monorepos | Lets each app validate its own schema and env files |
+
+## Why Another Env Tool
+
+Many tools validate env values at application startup. That is useful, but it is late. By the time startup validation fails, somebody has already pulled the code, run the app, or shipped a deploy.
+
+`envlens` works earlier:
+
+- during local development
+- during pull requests
+- before a deploy pipeline reaches runtime
+- while updating docs for contributors
+
+It is not trying to replace framework-specific runtime validation. It is the layer that checks whether the repo's configuration contract is documented, typed, and in sync with the code that uses it.
+
+## What It Checks
+
+| Check | Example | Severity |
+| --- | --- | --- |
+| Missing local env | `DATABASE_URL` is required but absent from `.env` | error |
+| Used but undocumented | `process.env.BILLING_TOKEN` is missing from `.env.example` | error |
+| Empty required value | `DATABASE_URL=` with `required: true` | error |
+| Type mismatch | `PORT=abc` with `type: integer` | error |
+| Invalid enum | `NODE_ENV=staging` outside allowed values | error |
+| Duplicate key | `PORT` appears twice in the same env file | warning |
+| Undocumented local key | `.env` contains a key not in schema or example | warning |
+| Unused example key | `.env.example` lists a key not found in scanned code | warning |
+| Public secret name | `NEXT_PUBLIC_SECRET_KEY` | warning |
+| Schema gap | scanned key has no `env.schema.yml` entry | info |
+
+## Adoption Modes
+
+You can adopt `envlens` gradually.
+
+### 1. Documentation Mode
+
+Start by generating docs without failing builds:
+
+```console
+envlens docs --schema env.schema.yml > ENVIRONMENT.md
+```
+
+Use this when the project needs clearer onboarding but you are not ready to enforce rules.
+
+### 2. Local Doctor Mode
+
+Run checks locally:
+
+```console
+envlens check
+```
+
+This is good for catching drift while adding new features.
+
+### 3. Pull Request Mode
+
+Use GitHub annotations:
+
+```console
+envlens check --format github
+```
+
+This points contributors to the exact file and line where an env key was discovered.
+
+### 4. CI Gate Mode
+
+Treat warnings as failures:
+
+```console
+envlens check --format github --strict
+```
+
+Use this once the schema is mature and the team agrees on the contract.
+
+## Install
 
 From source:
 
@@ -49,17 +128,29 @@ python -m pip install -e .
 envlens check
 ```
 
-Or run without installing:
+Run directly from a checkout:
 
 ```console
 PYTHONPATH=src python -m envlens check examples --env examples/.env.example --example examples/.env.example --schema examples/env.schema.yml
 ```
 
-## Example Schema
+## Quick Start
 
-Create `env.schema.yml`:
+Create a sample contract:
+
+```dotenv
+# .env.example
+DATABASE_URL=postgres://localhost:5432/app
+PORT=3000
+NODE_ENV=development
+PUBLIC_API_URL=https://api.example.com
+BILLING_TOKEN=replace-me
+```
+
+Create a typed schema:
 
 ```yaml
+# env.schema.yml
 DATABASE_URL:
   type: url
   required: true
@@ -67,6 +158,7 @@ DATABASE_URL:
 
 PORT:
   type: integer
+  required: true
   default: 3000
   description: Local web server port.
 
@@ -75,34 +167,213 @@ NODE_ENV:
   values: [development, test, production]
   default: development
   description: Runtime environment.
+
+PUBLIC_API_URL:
+  type: url
+  required: true
+  public: true
+  description: Public API base URL used by the frontend.
+
+BILLING_TOKEN:
+  type: string
+  required: true
+  secret: true
+  description: Server-side billing provider token.
 ```
 
-Then run:
+Run the analyzer:
 
 ```console
 envlens check --schema env.schema.yml
 ```
 
-## CLI
+Generate docs:
+
+```console
+envlens docs --schema env.schema.yml > ENVIRONMENT.md
+```
+
+## Commands
+
+### `envlens check`
+
+Validate a project environment contract.
 
 ```console
 envlens check [PROJECT_PATH]
-envlens docs [PROJECT_PATH]
-envlens init-schema [PROJECT_PATH]
 ```
 
-Useful options:
+Common options:
 
 ```console
 --env .env                  Env file to validate. Can be repeated.
---example .env.example      Example contract file.
+--example .env.example      Example env contract file.
 --schema env.schema.yml     Typed schema file.
---format text               text, json, or github.
+--format text               Output format: text, json, or github.
 --strict                    Treat warnings as failures.
---no-scan                   Skip code usage scanning.
+--no-scan                   Skip source code scanning.
 ```
 
-## GitHub Actions
+Examples:
+
+```console
+envlens check
+envlens check apps/web --env apps/web/.env.local --schema apps/web/env.schema.yml
+envlens check --format json
+envlens check --format github --strict
+```
+
+### `envlens docs`
+
+Generate a Markdown table from the detected contract.
+
+```console
+envlens docs --schema env.schema.yml
+```
+
+Example output:
+
+| Variable | Required | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| DATABASE_URL | yes | url |  | Database connection string. |
+| NODE_ENV | no | enum | development | Runtime environment. |
+| PORT | yes | integer | 3000 | Local web server port. |
+
+### `envlens init-schema`
+
+Infer a starter schema from source code and `.env.example`.
+
+```console
+envlens init-schema > env.schema.yml
+```
+
+This is intentionally conservative. It gives you a first draft, then you add descriptions, enum values, and optional flags.
+
+## Output Formats
+
+### Text
+
+Default output for humans:
+
+```console
+envlens check
+```
+
+### JSON
+
+Structured output for scripts:
+
+```console
+envlens check --format json
+```
+
+The JSON payload includes:
+
+- summary counts
+- normalized issues
+- source usages with file, line, language, and expression
+
+### GitHub
+
+Annotation output for GitHub Actions:
+
+```console
+envlens check --format github
+```
+
+Errors become workflow errors, warnings become workflow warnings, and info items become notices.
+
+## Severity Model
+
+`envlens` uses three severities so teams can tune enforcement over time.
+
+| Severity | Meaning | Default exit behavior |
+| --- | --- | --- |
+| error | The environment contract is likely broken | non-zero exit |
+| warning | The contract may be stale, risky, or confusing | zero exit unless `--strict` |
+| info | Useful cleanup or schema completeness signal | zero exit |
+
+This lets you start with visibility, then move to enforcement once the contract is clean.
+
+## Schema Reference
+
+`env.schema.yml` is a small YAML-like file where each top-level key is an environment variable.
+
+```yaml
+VARIABLE_NAME:
+  type: string
+  required: true
+  default: ""
+  values: []
+  description: Human-readable documentation.
+  secret: false
+  public: false
+```
+
+Supported fields:
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `type` | string | `string`, `number`, `integer`, `boolean`, `url`, `email`, or `enum` |
+| `required` | boolean | Whether the key must appear in validated env files |
+| `default` | string | Documented default value |
+| `values` | list | Allowed values for `type: enum` |
+| `description` | string | Documentation used by `envlens docs` |
+| `secret` | boolean | Override secret-name inference |
+| `public` | boolean | Override public-client-name inference |
+
+## Source Scanning
+
+`envlens` scans common source patterns and records file and line information for each key.
+
+| Language | Patterns |
+| --- | --- |
+| JavaScript and TypeScript | `process.env.NAME`, `process.env["NAME"]`, `import.meta.env.NAME` |
+| Python | `os.getenv("NAME")`, `os.environ["NAME"]`, `os.environ.get("NAME")` |
+| Go | `os.Getenv("NAME")`, `os.LookupEnv("NAME")` |
+| Ruby | `ENV["NAME"]`, `ENV.fetch("NAME")` |
+| PHP | `getenv("NAME")`, `$_ENV["NAME"]`, `$_SERVER["NAME"]` |
+
+Skipped directories include `.git`, `node_modules`, `.venv`, `vendor`, `dist`, `build`, `.next`, and cache folders.
+
+## Monorepo Examples
+
+Validate one app inside a monorepo:
+
+```console
+envlens check apps/web --env apps/web/.env.local --example apps/web/.env.example --schema apps/web/env.schema.yml
+```
+
+Validate multiple apps in CI:
+
+```yaml
+strategy:
+  matrix:
+    app: [apps/web, apps/api, apps/admin]
+
+steps:
+  - uses: actions/checkout@v5
+  - uses: actions/setup-python@v6
+    with:
+      python-version: "3.12"
+  - run: python -m pip install .
+  - run: envlens check ${{ matrix.app }} --schema ${{ matrix.app }}/env.schema.yml --format github --strict
+```
+
+## Security Posture
+
+`envlens` is not a replacement for a dedicated secrets scanner. It focuses on environment contract risk:
+
+- secret-like names in public frontend prefixes
+- real-looking values in sample env files
+- weak placeholder values in local secret keys
+- accidental documentation of sensitive values
+
+Use it alongside GitHub secret scanning, pre-commit hooks, or dedicated scanners if your project handles sensitive credentials.
+
+## CI
+
+Use GitHub Actions annotations:
 
 ```yaml
 name: envlens
@@ -124,40 +395,170 @@ jobs:
       - run: envlens check --format github --strict
 ```
 
-## Documentation Table
-
-Generate a README-ready table:
+Use JSON for custom pipelines:
 
 ```console
-envlens docs --schema env.schema.yml > ENVIRONMENT.md
+envlens check --format json
 ```
 
-Output:
+The JSON output contains a summary, issue list, and detected source usages.
 
-| Variable | Required | Type | Default | Description |
-| --- | --- | --- | --- | --- |
-| DATABASE_URL | yes | url |  | Database connection string. |
-| NODE_ENV | no | enum | development | Runtime environment. |
+## How It Works
 
-## Supported Code Patterns
+`envlens` has four small stages:
 
-`envlens` currently scans these common patterns:
+1. Parse env files
+   `.env`, `.env.example`, and any repeated `--env` files are parsed into key/value entries with line numbers.
 
-- JavaScript/TypeScript: `process.env.NAME`, `process.env["NAME"]`, `import.meta.env.NAME`
-- Python: `os.getenv("NAME")`, `os.environ["NAME"]`, `os.environ.get("NAME")`
-- Go: `os.Getenv("NAME")`, `os.LookupEnv("NAME")`
-- Ruby: `ENV["NAME"]`, `ENV.fetch("NAME")`
-- PHP: `getenv("NAME")`, `$_ENV["NAME"]`, `$_SERVER["NAME"]`
+2. Load schema
+   `env.schema.yml` or JSON schema input is normalized into a typed contract.
+
+3. Scan source
+   Supported source files are searched for common env access patterns.
+
+4. Compare contracts
+   The analyzer combines env files, schema metadata, and source usage into deterministic findings.
+
+The implementation has no required third-party runtime dependencies, which keeps installs small and CI behavior predictable.
+
+## Example Workflows
+
+### Adding a New Environment Variable
+
+1. Add the variable where the app reads it.
+2. Add it to `.env.example`.
+3. Add type and description metadata to `env.schema.yml`.
+4. Run `envlens check`.
+5. Regenerate docs with `envlens docs` if your README or `ENVIRONMENT.md` includes an env table.
+
+### Cleaning Up an Old Feature
+
+1. Remove the old code path.
+2. Run `envlens check`.
+3. Review `unused-example` and `schema-unused` findings.
+4. Remove stale keys from `.env.example` and `env.schema.yml`.
+
+### Preparing a Repo for Contributors
+
+1. Create `.env.example`.
+2. Run `envlens init-schema > env.schema.yml`.
+3. Add descriptions to the generated schema.
+4. Run `envlens docs > ENVIRONMENT.md`.
+5. Add a CI check in non-strict mode.
+
+## Design Principles
+
+- Local first: useful on a laptop before it becomes a CI gate.
+- Contract driven: `.env.example` and `env.schema.yml` should describe what the project needs.
+- Explainable output: every finding should include a key, a reason, and usually a file or line.
+- Conservative security checks: flag suspicious patterns without pretending to be a full secrets scanner.
+- Small surface area: one CLI that does a focused job well.
+
+## Limitations
+
+`envlens` is intentionally lightweight. It does not evaluate arbitrary code, expand shell scripts, execute framework config, or parse every possible dynamic env lookup.
+
+These patterns are not reliably detectable yet:
+
+```python
+name = "DATABASE_URL"
+os.getenv(name)
+```
+
+```ts
+const key = "DATABASE_" + "URL";
+process.env[key];
+```
+
+When a variable is intentionally dynamic or provided outside the source tree, add it to `env.schema.yml` so it remains documented.
+
+## Comparison
+
+| Need | envlens | Runtime env validators | Secrets scanners |
+| --- | --- | --- | --- |
+| Find env usage in source | yes | usually no | no |
+| Compare code usage to `.env.example` | yes | no | no |
+| Validate typed env values | yes | yes | no |
+| Generate env documentation | yes | sometimes | no |
+| Run before app startup | yes | no | yes |
+| Detect provider credentials | limited | no | yes |
+| Enforce runtime safety | no | yes | no |
+
+The sweet spot for `envlens` is configuration contract drift. It pairs well with runtime validators and secrets scanners rather than competing with them.
+
+## Project Layout
+
+```text
+envlens/
+  src/envlens/
+    analyzer.py     contract comparison engine
+    cli.py          command-line interface
+    envfile.py      dotenv parser
+    models.py       dataclasses used across the project
+    report.py       text, JSON, GitHub, and docs renderers
+    scanner.py      source-code env usage scanner
+    schema.py       schema loader and normalizer
+  examples/         sample app and schema
+  tests/            unit tests
+```
 
 ## Roadmap
 
-- Framework presets for Next.js, Vite, FastAPI, Django, Laravel, and Docker Compose
-- SARIF output for GitHub code scanning
+Near term:
+
+- Add SARIF output for GitHub code scanning
+- Add framework presets for Next.js, Vite, FastAPI, Django, Laravel, and Docker Compose
+- Support multiple environment profiles, such as `.env.local`, `.env.test`, and `.env.production`
+- Add richer duplicate and case-collision reporting
+
+Future:
+
+- Interactive `envlens doctor` fix wizard
 - Runtime validators for Python and Node.js
-- Interactive fix wizard
-- Kubernetes and Docker Compose environment matrix checks
+- Kubernetes ConfigMap and Secret checks
+- Docker Compose environment matrix checks
+- Package releases for PyPI and Homebrew
+
+## FAQ
+
+### Does envlens read my real secrets?
+
+It parses the env files you pass to it and reports only key names, locations, and validation problems. Avoid committing real `.env` files, and prefer validating `.env.example` or local files in trusted environments.
+
+### Can I use it without a schema?
+
+Yes. Without `env.schema.yml`, `envlens` still compares scanned usage with `.env.example` and env files. The schema adds stronger typing, descriptions, defaults, and public/secret overrides.
+
+### Why does it report variables that are intentionally unused?
+
+Some env variables are consumed by hosting platforms, CLIs, containers, or external tools instead of source code. Add those variables to `env.schema.yml` with a description so they remain documented.
+
+### Does it support YAML fully?
+
+The current schema parser supports the small YAML subset needed for simple env contracts. JSON schema files are also supported. Full YAML parsing is planned once the project introduces optional dependencies.
+
+### Will dynamic env access be supported?
+
+Some dynamic patterns may be added, but `envlens` will stay conservative. Guessing dynamic keys incorrectly is worse than asking maintainers to document them in the schema.
+
+## Contributing
+
+Contributions are welcome. Good first issues include:
+
+- adding a new source scanning pattern
+- improving schema inference
+- adding framework-specific presets
+- expanding CI output formats
+- tightening tests around edge cases
+
+Run tests locally:
+
+```console
+python -m unittest discover -s tests
+```
+
+Please keep fixtures free of provider-shaped fake secrets. GitHub push protection may block commits that resemble real API keys, even when they are only test data.
 
 ## License
 
-MIT
-
+MIT. See [LICENSE](LICENSE).
