@@ -16,6 +16,16 @@ class WebAssetTests(unittest.TestCase):
             self.assertIn(asset, html)
             self.assertTrue((root / "web" / asset).exists(), asset)
 
+    def test_static_web_entry_includes_workbench_views(self):
+        root = Path(__file__).resolve().parents[1]
+        html = (root / "web" / "index.html").read_text(encoding="utf-8")
+
+        for view in ["issues", "variables", "explain", "fixplan", "schema", "docs", "export", "cli"]:
+            self.assertIn(f'id="view-{view}"', html)
+
+        for control in ["ignoreKeys", "themeToggle", "shareState", "schemaOutput", "cliOutput"]:
+            self.assertIn(f'id="{control}"', html)
+
     def test_static_web_app_avoids_remote_runtime_dependencies(self):
         root = Path(__file__).resolve().parents[1]
         html = (root / "web" / "index.html").read_text(encoding="utf-8")

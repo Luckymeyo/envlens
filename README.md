@@ -705,7 +705,8 @@ envlens/
 Shipped in 0.3:
 
 - Static web workbench
-- Browser-side issue, variable, explain, docs, and export views
+- Browser-side issue, variable, explain, fix plan, schema, docs, export, and CLI views
+- Share links, downloads, ignored-key filters, and light/dark themes
 - GitHub Pages deployment workflow
 
 Shipped in 0.2:

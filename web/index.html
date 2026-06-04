@@ -29,6 +29,19 @@
         <path d="M7 9l5-5 5 5"></path>
         <path d="M5 20h14"></path>
       </symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24">
+        <path d="M12 4v12"></path>
+        <path d="M7 11l5 5 5-5"></path>
+        <path d="M5 20h14"></path>
+      </symbol>
+      <symbol id="icon-share" viewBox="0 0 24 24">
+        <path d="M8 12h8"></path>
+        <path d="M14 6l6 6-6 6"></path>
+        <path d="M4 6v12"></path>
+      </symbol>
+      <symbol id="icon-theme" viewBox="0 0 24 24">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"></path>
+      </symbol>
     </svg>
 
     <div class="app-shell">
@@ -45,11 +58,20 @@
           <button class="tab is-active" type="button" data-view="issues">Issues</button>
           <button class="tab" type="button" data-view="variables">Variables</button>
           <button class="tab" type="button" data-view="explain">Explain</button>
+          <button class="tab" type="button" data-view="fixplan">Fix Plan</button>
+          <button class="tab" type="button" data-view="schema">Schema</button>
           <button class="tab" type="button" data-view="docs">Docs</button>
           <button class="tab" type="button" data-view="export">Export</button>
+          <button class="tab" type="button" data-view="cli">CLI</button>
         </nav>
 
         <div class="top-actions">
+          <button class="icon-button" type="button" id="themeToggle" title="Toggle theme" aria-label="Toggle theme">
+            <svg><use href="#icon-theme"></use></svg>
+          </button>
+          <button class="icon-button" type="button" id="shareState" title="Copy share link" aria-label="Copy share link">
+            <svg><use href="#icon-share"></use></svg>
+          </button>
           <button class="icon-button" type="button" id="copySummary" title="Copy summary" aria-label="Copy summary">
             <svg><use href="#icon-copy"></use></svg>
           </button>
@@ -102,6 +124,10 @@
               <label><input type="checkbox" value="django" name="preset"> Django</label>
               <label><input type="checkbox" value="docker-compose" name="preset"> Docker</label>
             </div>
+            <label class="setting-field">
+              <span>Ignored keys</span>
+              <input id="ignoreKeys" type="text" placeholder="EXTERNAL_PLATFORM_KEY, DYNAMIC_*">
+            </label>
           </div>
 
           <div class="editor-stack">
@@ -142,6 +168,14 @@
             <div class="metric-tile">
               <span>Info</span>
               <strong id="infoCount">0</strong>
+            </div>
+            <div class="metric-tile">
+              <span>Keys</span>
+              <strong id="keyCount">0</strong>
+            </div>
+            <div class="metric-tile">
+              <span>Usages</span>
+              <strong id="usageCount">0</strong>
             </div>
           </div>
 
@@ -195,13 +229,47 @@
             <div id="explainBody" class="explain-body"></div>
           </section>
 
-          <section class="view-panel" id="view-docs">
+          <section class="view-panel" id="view-fixplan">
             <div class="panel-header">
-              <h2>Markdown Docs</h2>
-              <button class="tool-button compact" type="button" data-copy-target="docsOutput">
+              <h2>Fix Plan</h2>
+              <button class="tool-button compact" type="button" data-copy-render="fixplan">
                 <svg><use href="#icon-copy"></use></svg>
                 Copy
               </button>
+            </div>
+            <div id="fixPlanBody" class="fix-plan"></div>
+          </section>
+
+          <section class="view-panel" id="view-schema">
+            <div class="panel-header">
+              <h2>Generated Schema</h2>
+              <div class="panel-actions">
+                <button class="tool-button compact" type="button" data-copy-target="schemaOutput">
+                  <svg><use href="#icon-copy"></use></svg>
+                  Copy
+                </button>
+                <button class="tool-button compact" type="button" data-download-target="schemaOutput" data-filename="env.schema.yml">
+                  <svg><use href="#icon-download"></use></svg>
+                  Download
+                </button>
+              </div>
+            </div>
+            <textarea id="schemaOutput" class="output-box" readonly></textarea>
+          </section>
+
+          <section class="view-panel" id="view-docs">
+            <div class="panel-header">
+              <h2>Markdown Docs</h2>
+              <div class="panel-actions">
+                <button class="tool-button compact" type="button" data-copy-target="docsOutput">
+                  <svg><use href="#icon-copy"></use></svg>
+                  Copy
+                </button>
+                <button class="tool-button compact" type="button" data-download-target="docsOutput" data-filename="ENVIRONMENT.md">
+                  <svg><use href="#icon-download"></use></svg>
+                  Download
+                </button>
+              </div>
             </div>
             <textarea id="docsOutput" class="output-box" readonly></textarea>
           </section>
@@ -221,8 +289,29 @@
                 <svg><use href="#icon-copy"></use></svg>
                 Copy
               </button>
+              <button class="tool-button compact" type="button" data-download-target="exportOutput" data-filename="envlens-report.txt">
+                <svg><use href="#icon-download"></use></svg>
+                Download
+              </button>
             </div>
             <textarea id="exportOutput" class="output-box" readonly></textarea>
+          </section>
+
+          <section class="view-panel" id="view-cli">
+            <div class="panel-header">
+              <h2>CLI & CI</h2>
+              <div class="panel-actions">
+                <button class="tool-button compact" type="button" data-copy-target="cliOutput">
+                  <svg><use href="#icon-copy"></use></svg>
+                  Copy
+                </button>
+                <button class="tool-button compact" type="button" data-download-target="cliOutput" data-filename="envlens-commands.txt">
+                  <svg><use href="#icon-download"></use></svg>
+                  Download
+                </button>
+              </div>
+            </div>
+            <textarea id="cliOutput" class="output-box" readonly></textarea>
           </section>
         </section>
       </main>

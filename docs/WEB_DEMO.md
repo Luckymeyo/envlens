@@ -27,8 +27,21 @@ https://luckymeyo.github.io/envlens/
 | Issues | Filter findings by severity |
 | Variables | Review detected keys, sources, schema types, and status |
 | Explain | Inspect one variable across env files, schema, source, and findings |
+| Fix Plan | Group findings into a remediation checklist |
+| Schema | Generate a starter `env.schema.yml` from detected variables |
 | Docs | Generate a Markdown environment table |
 | Export | Copy text, JSON, GitHub annotation, or SARIF output |
+| CLI | Generate local CLI commands and a GitHub Actions snippet |
+
+## Features
+
+- Paste `.env`, `.env.example`, schema, and source snippets.
+- Drag files into the workbench.
+- Apply framework presets.
+- Ignore exact keys or wildcard prefixes such as `DYNAMIC_*`.
+- Copy a shareable URL for the current workbench state.
+- Toggle light and dark themes.
+- Download generated docs, schema, reports, and command snippets.
 
 ## Notes
 

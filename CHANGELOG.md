@@ -6,6 +6,7 @@ All notable changes to `envlens` will be documented in this file.
 
 - Added a static web workbench under `web/`.
 - Added browser-side env, schema, source scanning, issue filtering, variable review, explain view, docs generation, and export views.
+- Added fix-plan, generated-schema, CLI/CI snippet, share-link, ignored-key, download, and theme features to the web workbench.
 - Added GitHub Pages deployment workflow.
 - Added web demo documentation and static asset tests.
 

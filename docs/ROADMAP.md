@@ -3,7 +3,8 @@
 ## Shipped in 0.3
 
 - Static browser workbench for paste-and-check env contract reviews.
-- Issues, variables, explain, docs, and export views.
+- Issues, variables, explain, fix-plan, generated-schema, docs, export, and CLI views.
+- Share links, downloads, ignored-key filters, and light/dark themes.
 - Browser-side support for text, JSON, GitHub annotation, and SARIF-style exports.
 - GitHub Pages deployment workflow.
 

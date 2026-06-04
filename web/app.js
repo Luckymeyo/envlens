@@ -121,6 +121,7 @@ const state = {
   analysis: null,
   filter: "all",
   activeView: "issues",
+  theme: "light",
 };
 
 const els = {
@@ -130,12 +131,16 @@ const els = {
   sourceInput: document.getElementById("sourceInput"),
   strictMode: document.getElementById("strictMode"),
   scanSource: document.getElementById("scanSource"),
+  ignoreKeys: document.getElementById("ignoreKeys"),
   issueList: document.getElementById("issueList"),
   variableRows: document.getElementById("variableRows"),
   variableSearch: document.getElementById("variableSearch"),
   explainKey: document.getElementById("explainKey"),
   explainBody: document.getElementById("explainBody"),
+  fixPlanBody: document.getElementById("fixPlanBody"),
+  schemaOutput: document.getElementById("schemaOutput"),
   docsOutput: document.getElementById("docsOutput"),
+  cliOutput: document.getElementById("cliOutput"),
   exportOutput: document.getElementById("exportOutput"),
   exportFormat: document.getElementById("exportFormat"),
   scoreValue: document.getElementById("scoreValue"),
@@ -143,12 +148,16 @@ const els = {
   errorCount: document.getElementById("errorCount"),
   warningCount: document.getElementById("warningCount"),
   infoCount: document.getElementById("infoCount"),
+  keyCount: document.getElementById("keyCount"),
+  usageCount: document.getElementById("usageCount"),
   statusDot: document.getElementById("statusDot"),
   statusTitle: document.getElementById("statusTitle"),
   statusText: document.getElementById("statusText"),
   toast: document.getElementById("toast"),
   fileInput: document.getElementById("fileInput"),
   dropZone: document.getElementById("dropZone"),
+  themeToggle: document.getElementById("themeToggle"),
+  shareState: document.getElementById("shareState"),
 };
 
 function parseEnv(text, path) {
@@ -350,6 +359,7 @@ function analyze() {
   const envFile = parseEnv(els.envInput.value, ".env");
   const exampleFile = parseEnv(els.exampleInput.value, ".env.example");
   const schema = parseSchema(els.schemaInput.value);
+  const ignoredKeys = parseIgnoredKeys(els.ignoreKeys.value);
   const selectedPresets = Array.from(document.querySelectorAll("input[name='preset']:checked")).map((input) => input.value);
   selectedPresets.forEach((presetName) => {
     Object.entries(PRESETS[presetName] || {}).forEach(([key, spec]) => {
@@ -359,11 +369,11 @@ function analyze() {
     });
   });
 
-  const usages = els.scanSource.checked ? scanSource(els.sourceInput.value) : [];
+  const usages = (els.scanSource.checked ? scanSource(els.sourceInput.value) : []).filter((usage) => !isIgnored(usage.key, ignoredKeys));
   const issues = [];
   issues.push(...parseIssues(envFile, exampleFile, schema));
   issues.push(...contractIssues(envFile, exampleFile, schema, usages));
-  issues.sort(issueSortKey);
+  const visibleIssues = issues.filter((issue) => !issue.key || !isIgnored(issue.key, ignoredKeys)).sort(issueSortKey);
 
   const keys = new Set([
     ...Object.keys(envFile.entries),
@@ -371,19 +381,38 @@ function analyze() {
     ...Object.keys(schema.specs),
     ...usages.map((usage) => usage.key),
   ]);
+  const visibleKeys = Array.from(keys).filter((key) => !isIgnored(key, ignoredKeys)).sort();
 
   const analysis = {
     envFile,
     exampleFile,
     schema,
     usages,
-    issues,
-    keys: Array.from(keys).sort(),
+    issues: visibleIssues,
+    keys: visibleKeys,
+    ignoredKeys,
+    selectedPresets,
     strict: els.strictMode.checked,
   };
   state.analysis = analysis;
   render();
   saveDraft();
+}
+
+function parseIgnoredKeys(text) {
+  return text
+    .split(/[,\n\s]+/)
+    .map((key) => key.trim())
+    .filter(Boolean);
+}
+
+function isIgnored(key, ignoredKeys) {
+  return ignoredKeys.some((pattern) => {
+    if (pattern.endsWith("*")) {
+      return key.startsWith(pattern.slice(0, -1));
+    }
+    return key === pattern;
+  });
 }
 
 function parseIssues(envFile, exampleFile, schema) {
@@ -731,6 +760,8 @@ function render() {
   els.errorCount.textContent = String(counts.error);
   els.warningCount.textContent = String(counts.warning);
   els.infoCount.textContent = String(counts.info);
+  els.keyCount.textContent = String(analysis.keys.length);
+  els.usageCount.textContent = String(analysis.usages.length);
 
   els.statusDot.classList.toggle("has-errors", counts.error > 0);
   els.statusDot.classList.toggle("has-warnings", counts.error === 0 && counts.warning > 0);
@@ -742,7 +773,10 @@ function render() {
   renderIssues();
   renderVariables();
   renderExplain();
+  renderFixPlan();
+  els.schemaOutput.value = renderGeneratedSchema(analysis);
   els.docsOutput.value = renderDocs(analysis);
+  els.cliOutput.value = renderCli(analysis);
   renderExport();
 }
 
@@ -839,6 +873,144 @@ function explainSection(title, items) {
   `;
 }
 
+const FIX_ADVICE = {
+  "missing-in-env": "Add the required key to the validated env file, or mark it required: false in the schema.",
+  "missing-in-example": "Add the used key to .env.example so contributors know it exists.",
+  "type-mismatch": "Update the value or correct the schema type.",
+  "invalid-enum": "Use one of the allowed enum values, or expand the schema values list.",
+  "unused-example": "Remove stale sample keys, or document externally consumed keys in the schema.",
+  "undocumented-env": "Add local-only keys to .env.example or env.schema.yml.",
+  "public-secret-name": "Rename public client-side variables so they do not look like private secrets.",
+  "weak-secret": "Use a real local secret value or keep placeholders only in .env.example.",
+  "schema-missing-used": "Add type and description metadata for scanned keys.",
+  "schema-unused": "Keep the key if an external platform uses it, otherwise remove stale schema metadata.",
+  "duplicate-key": "Keep one declaration per env file.",
+  "case-collision": "Normalize key casing so one logical variable has one spelling.",
+  "parse-error": "Fix malformed env file lines.",
+  "schema-parse-error": "Fix malformed schema syntax.",
+};
+
+function renderFixPlan() {
+  const analysis = state.analysis;
+  if (!analysis.issues.length) {
+    els.fixPlanBody.innerHTML = `<div class="empty-state">No fixes needed. The current contract is clean.</div>`;
+    return;
+  }
+  const grouped = groupBy(analysis.issues, "code");
+  els.fixPlanBody.innerHTML = Object.entries(grouped).map(([code, issues]) => {
+    const severity = issues.some((issue) => issue.severity === "error") ? "error" : issues.some((issue) => issue.severity === "warning") ? "warning" : "info";
+    return `
+      <article class="plan-card ${severity}">
+        <h3>${escapeHtml(code)} <span class="source-pill">${issues.length} finding${issues.length === 1 ? "" : "s"}</span></h3>
+        <p>${escapeHtml(FIX_ADVICE[code] || "Review these findings and update the contract.")}</p>
+        <ul>
+          ${issues.slice(0, 8).map((issue) => `<li>${escapeHtml(issue.key || "-")}: ${escapeHtml(issue.message)}</li>`).join("")}
+        </ul>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderFixPlanText(analysis) {
+  if (!analysis.issues.length) {
+    return "envlens fix plan\n\nNo fixes needed. The current contract is clean.";
+  }
+  const grouped = groupBy(analysis.issues, "code");
+  const lines = ["envlens fix plan", ""];
+  Object.entries(grouped).forEach(([code, issues]) => {
+    lines.push(`${code} (${issues.length})`);
+    lines.push(FIX_ADVICE[code] || "Review these findings and update the contract.");
+    issues.slice(0, 8).forEach((issue) => {
+      lines.push(`- ${issue.key || "-"}: ${issue.message}`);
+    });
+    lines.push("");
+  });
+  return lines.join("\n").trimEnd();
+}
+
+function renderGeneratedSchema(analysis) {
+  if (!analysis.keys.length) {
+    return "# No variables detected yet.\n";
+  }
+  const blocks = [];
+  analysis.keys.forEach((key) => {
+    const spec = analysis.schema.specs[key];
+    const envEntry = analysis.envFile.entries[key] || analysis.exampleFile.entries[key];
+    const type = spec ? spec.type : inferTypeName(key);
+    const required = spec ? spec.required : Boolean(analysis.usages.some((usage) => usage.key === key) || analysis.exampleFile.entries[key]);
+    blocks.push(`${key}:`);
+    blocks.push(`  type: ${type}`);
+    blocks.push(`  required: ${required ? "true" : "false"}`);
+    if (spec && spec.values && spec.values.length) {
+      blocks.push(`  values: [${spec.values.join(", ")}]`);
+    }
+    if (spec && spec.default !== null && spec.default !== undefined) {
+      blocks.push(`  default: ${yamlScalar(spec.default)}`);
+    } else if (envEntry && envEntry.value && !isSecretName(key, spec)) {
+      blocks.push(`  default: ${yamlScalar(envEntry.value)}`);
+    }
+    if (spec && spec.secret !== null && spec.secret !== undefined) {
+      blocks.push(`  secret: ${spec.secret ? "true" : "false"}`);
+    } else if (isSecretName(key, spec)) {
+      blocks.push("  secret: true");
+    }
+    if (spec && spec.public !== null && spec.public !== undefined) {
+      blocks.push(`  public: ${spec.public ? "true" : "false"}`);
+    } else if (isPublicName(key, spec)) {
+      blocks.push("  public: true");
+    }
+    blocks.push(`  description: ${yamlScalar(spec && spec.description ? spec.description : "")}`);
+    blocks.push("");
+  });
+  return blocks.join("\n").trimEnd() + "\n";
+}
+
+function yamlScalar(value) {
+  const text = String(value ?? "");
+  if (text === "" || /[:|#[\]{},\n]/.test(text) || /^\s|\s$/.test(text)) {
+    return JSON.stringify(text);
+  }
+  return text;
+}
+
+function renderCli(analysis) {
+  const presets = analysis.selectedPresets.map((preset) => ` --preset ${preset}`).join("");
+  const ignores = analysis.ignoredKeys.map((key) => ` --ignore ${key}`).join("");
+  const strict = analysis.strict ? " --strict" : "";
+  const lines = [
+    "# Local check",
+    `envlens check --env .env --example .env.example --schema env.schema.yml${presets}${ignores}${strict}`,
+    "",
+    "# GitHub annotations",
+    `envlens check --format github --env .env --example .env.example --schema env.schema.yml${presets}${ignores}${strict}`,
+    "",
+    "# SARIF export",
+    `envlens check --format sarif --env .env --example .env.example --schema env.schema.yml${presets}${ignores} > envlens.sarif`,
+    "",
+    "# Generate docs",
+    "envlens docs --schema env.schema.yml > ENVIRONMENT.md",
+    "",
+    "# Explain a key",
+    `envlens explain ${analysis.keys[0] || "DATABASE_URL"} --env .env --example .env.example --schema env.schema.yml`,
+    "",
+    "# GitHub Actions",
+    "name: envlens",
+    "on: [pull_request]",
+    "jobs:",
+    "  envlens:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - uses: actions/checkout@v5",
+    "      - uses: Luckymeyo/envlens@main",
+    "        with:",
+    "          path: .",
+    "          format: github",
+    `          strict: "${analysis.strict ? "true" : "false"}"`,
+    "          summary: \"true\"",
+  ];
+  return lines.join("\n");
+}
+
 function renderDocs(analysis) {
   const rows = [
     "| Variable | Required | Type | Default | Description |",
@@ -863,6 +1035,7 @@ function renderExport() {
     sarif: renderSarif,
   };
   els.exportOutput.value = renderers[format](state.analysis);
+  updateExportDownloadName();
 }
 
 function renderText(analysis) {
@@ -886,7 +1059,9 @@ function renderJson(analysis) {
       errors: countSeverities(analysis.issues).error,
       warnings: countSeverities(analysis.issues).warning,
       info: countSeverities(analysis.issues).info,
+      keys: analysis.keys.length,
       usages: analysis.usages.length,
+      ignored: analysis.ignoredKeys,
     },
     issues: analysis.issues,
     usages: analysis.usages,
@@ -1007,7 +1182,76 @@ function escapeGithub(value) {
 }
 
 function copyText(text) {
-  navigator.clipboard.writeText(text).then(() => showToast("Copied"));
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => showToast("Copied"));
+    return;
+  }
+  const scratch = document.createElement("textarea");
+  scratch.value = text;
+  document.body.appendChild(scratch);
+  scratch.select();
+  document.execCommand("copy");
+  scratch.remove();
+  showToast("Copied");
+}
+
+function downloadText(text, filename) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("Downloaded");
+}
+
+function currentPayload() {
+  return {
+    env: els.envInput.value,
+    example: els.exampleInput.value,
+    schema: els.schemaInput.value,
+    source: els.sourceInput.value,
+    ignore: els.ignoreKeys.value,
+    strict: els.strictMode.checked,
+    scan: els.scanSource.checked,
+    theme: state.theme,
+    presets: Array.from(document.querySelectorAll("input[name='preset']:checked")).map((input) => input.value),
+  };
+}
+
+function encodePayload(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodePayload(encoded) {
+  const padded = encoded.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - encoded.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function copyShareLink() {
+  const url = new URL(window.location.href);
+  url.hash = `state=${encodePayload(currentPayload())}`;
+  copyText(url.toString());
+}
+
+function setTheme(theme) {
+  state.theme = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = state.theme;
+  localStorage.setItem("envlens-web-theme", state.theme);
+}
+
+function toggleTheme() {
+  setTheme(state.theme === "dark" ? "light" : "dark");
 }
 
 function showToast(message) {
@@ -1021,6 +1265,10 @@ function loadSample() {
   els.exampleInput.value = SAMPLE.example;
   els.schemaInput.value = SAMPLE.schema;
   els.sourceInput.value = SAMPLE.source;
+  els.ignoreKeys.value = "";
+  document.querySelectorAll("input[name='preset']").forEach((input) => {
+    input.checked = false;
+  });
   document.querySelector("input[name='preset'][value='nextjs']").checked = true;
   analyze();
 }
@@ -1030,6 +1278,7 @@ function clearAll() {
   els.exampleInput.value = "";
   els.schemaInput.value = "";
   els.sourceInput.value = "";
+  els.ignoreKeys.value = "";
   document.querySelectorAll("input[name='preset']").forEach((input) => {
     input.checked = false;
   });
@@ -1037,39 +1286,48 @@ function clearAll() {
 }
 
 function saveDraft() {
-  const payload = {
-    env: els.envInput.value,
-    example: els.exampleInput.value,
-    schema: els.schemaInput.value,
-    source: els.sourceInput.value,
-    strict: els.strictMode.checked,
-    scan: els.scanSource.checked,
-    presets: Array.from(document.querySelectorAll("input[name='preset']:checked")).map((input) => input.value),
-  };
-  localStorage.setItem("envlens-web-draft", JSON.stringify(payload));
+  localStorage.setItem("envlens-web-draft", JSON.stringify(currentPayload()));
 }
 
 function restoreDraft() {
-  const raw = localStorage.getItem("envlens-web-draft");
+  const hashMatch = window.location.hash.match(/^#state=(.+)$/);
+  const raw = hashMatch ? null : localStorage.getItem("envlens-web-draft");
+  if (hashMatch) {
+    try {
+      applyPayload(decodePayload(hashMatch[1]));
+      analyze();
+      showToast("Loaded shared state");
+      return;
+    } catch (_error) {
+      window.location.hash = "";
+      showToast("Share link could not be loaded");
+    }
+  }
   if (!raw) {
+    setTheme(localStorage.getItem("envlens-web-theme") || "light");
     loadSample();
     return;
   }
   try {
-    const payload = JSON.parse(raw);
-    els.envInput.value = payload.env || "";
-    els.exampleInput.value = payload.example || "";
-    els.schemaInput.value = payload.schema || "";
-    els.sourceInput.value = payload.source || "";
-    els.strictMode.checked = Boolean(payload.strict);
-    els.scanSource.checked = payload.scan !== false;
-    document.querySelectorAll("input[name='preset']").forEach((input) => {
-      input.checked = (payload.presets || []).includes(input.value);
-    });
+    applyPayload(JSON.parse(raw));
     analyze();
   } catch (_error) {
     loadSample();
   }
+}
+
+function applyPayload(payload) {
+  els.envInput.value = payload.env || "";
+  els.exampleInput.value = payload.example || "";
+  els.schemaInput.value = payload.schema || "";
+  els.sourceInput.value = payload.source || "";
+  els.ignoreKeys.value = payload.ignore || "";
+  els.strictMode.checked = Boolean(payload.strict);
+  els.scanSource.checked = payload.scan !== false;
+  setTheme(payload.theme || localStorage.getItem("envlens-web-theme") || "light");
+  document.querySelectorAll("input[name='preset']").forEach((input) => {
+    input.checked = (payload.presets || []).includes(input.value);
+  });
 }
 
 function handleFiles(files) {
@@ -1101,12 +1359,17 @@ function wireEvents() {
   document.getElementById("loadSample").addEventListener("click", loadSample);
   document.getElementById("clearAll").addEventListener("click", clearAll);
   document.getElementById("copySummary").addEventListener("click", () => copyText(renderText(state.analysis)));
+  els.shareState.addEventListener("click", copyShareLink);
+  els.themeToggle.addEventListener("click", toggleTheme);
 
-  [els.envInput, els.exampleInput, els.schemaInput, els.sourceInput].forEach((textarea) => {
+  [els.envInput, els.exampleInput, els.schemaInput, els.sourceInput, els.ignoreKeys].forEach((textarea) => {
     textarea.addEventListener("input", debounce(analyze, 220));
   });
   [els.strictMode, els.scanSource, els.exportFormat, els.variableSearch, els.explainKey].forEach((input) => {
-    input.addEventListener("input", input === els.exportFormat ? renderExport : input === els.variableSearch ? renderVariables : input === els.explainKey ? renderExplain : analyze);
+    input.addEventListener("input", input === els.exportFormat ? () => {
+      renderExport();
+      updateExportDownloadName();
+    } : input === els.variableSearch ? renderVariables : input === els.explainKey ? renderExplain : analyze);
   });
   document.querySelectorAll("input[name='preset']").forEach((input) => input.addEventListener("change", analyze));
 
@@ -1132,6 +1395,19 @@ function wireEvents() {
       copyText(target.value);
     });
   });
+  document.querySelectorAll("[data-copy-render]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.copyRender === "fixplan") {
+        copyText(renderFixPlanText(state.analysis));
+      }
+    });
+  });
+  document.querySelectorAll("[data-download-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.downloadTarget);
+      downloadText(target.value, button.dataset.filename || "envlens-output.txt");
+    });
+  });
 
   els.fileInput.addEventListener("change", (event) => handleFiles(event.target.files));
   ["dragenter", "dragover"].forEach((type) => {
@@ -1147,6 +1423,20 @@ function wireEvents() {
     });
   });
   els.dropZone.addEventListener("drop", (event) => handleFiles(event.dataTransfer.files));
+}
+
+function updateExportDownloadName() {
+  const button = document.querySelector("[data-download-target='exportOutput']");
+  if (!button) {
+    return;
+  }
+  const filenames = {
+    text: "envlens-report.txt",
+    json: "envlens-report.json",
+    github: "envlens-annotations.txt",
+    sarif: "envlens.sarif",
+  };
+  button.dataset.filename = filenames[els.exportFormat.value] || "envlens-report.txt";
 }
 
 function debounce(fn, wait) {
