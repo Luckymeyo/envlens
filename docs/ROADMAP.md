@@ -1,5 +1,12 @@
 # Roadmap
 
+## Shipped in 0.3
+
+- Static browser workbench for paste-and-check env contract reviews.
+- Issues, variables, explain, docs, and export views.
+- Browser-side support for text, JSON, GitHub annotation, and SARIF-style exports.
+- GitHub Pages deployment workflow.
+
 ## Shipped in 0.2
 
 - SARIF output for GitHub Code Scanning.

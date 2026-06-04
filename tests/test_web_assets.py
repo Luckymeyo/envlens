@@ -1,0 +1,30 @@
+import re
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+
+class WebAssetTests(unittest.TestCase):
+    def test_static_web_entry_references_existing_local_assets(self):
+        root = Path(__file__).resolve().parents[1]
+        index = root / "web" / "index.html"
+        html = index.read_text(encoding="utf-8")
+
+        for asset in ["styles.css", "app.js", "assets/envlens-mark.svg"]:
+            self.assertIn(asset, html)
+            self.assertTrue((root / "web" / asset).exists(), asset)
+
+    def test_static_web_app_avoids_remote_runtime_dependencies(self):
+        root = Path(__file__).resolve().parents[1]
+        html = (root / "web" / "index.html").read_text(encoding="utf-8")
+        scripts = re.findall(r"<script[^>]+src=\"([^\"]+)\"", html)
+        stylesheets = re.findall(r"<link[^>]+href=\"([^\"]+)\"", html)
+
+        remote_assets = [asset for asset in [*scripts, *stylesheets] if asset.startswith(("http://", "https://"))]
+        self.assertEqual(remote_assets, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

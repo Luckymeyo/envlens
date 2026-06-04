@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="envlens web demo for checking environment variable contracts in the browser.">
+    <title>envlens Web</title>
+    <link rel="icon" href="assets/envlens-mark.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-run" viewBox="0 0 24 24">
+        <path d="M8 5v14l11-7z"></path>
+      </symbol>
+      <symbol id="icon-sample" viewBox="0 0 24 24">
+        <path d="M4 4h16v16H4z"></path>
+        <path d="M8 9h8M8 13h8M8 17h5"></path>
+      </symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24">
+        <path d="M8 8h11v11H8z"></path>
+        <path d="M5 15H4V4h11v1"></path>
+      </symbol>
+      <symbol id="icon-clear" viewBox="0 0 24 24">
+        <path d="M6 6l12 12M18 6L6 18"></path>
+      </symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24">
+        <path d="M12 16V4"></path>
+        <path d="M7 9l5-5 5 5"></path>
+        <path d="M5 20h14"></path>
+      </symbol>
+    </svg>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <img src="assets/envlens-mark.svg" width="44" height="44" alt="">
+          <div>
+            <h1>envlens</h1>
+            <p>Environment contract workbench</p>
+          </div>
+        </div>
+
+        <nav class="view-tabs" aria-label="Result views">
+          <button class="tab is-active" type="button" data-view="issues">Issues</button>
+          <button class="tab" type="button" data-view="variables">Variables</button>
+          <button class="tab" type="button" data-view="explain">Explain</button>
+          <button class="tab" type="button" data-view="docs">Docs</button>
+          <button class="tab" type="button" data-view="export">Export</button>
+        </nav>
+
+        <div class="top-actions">
+          <button class="icon-button" type="button" id="copySummary" title="Copy summary" aria-label="Copy summary">
+            <svg><use href="#icon-copy"></use></svg>
+          </button>
+          <a class="repo-link" href="https://github.com/Luckymeyo/envlens" rel="noreferrer">GitHub</a>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="input-column" aria-label="Inputs">
+          <div class="toolbar">
+            <button class="primary-button" type="button" id="runAnalysis">
+              <svg><use href="#icon-run"></use></svg>
+              Analyze
+            </button>
+            <button class="tool-button" type="button" id="loadSample">
+              <svg><use href="#icon-sample"></use></svg>
+              Sample
+            </button>
+            <button class="tool-button" type="button" id="clearAll">
+              <svg><use href="#icon-clear"></use></svg>
+              Clear
+            </button>
+          </div>
+
+          <div class="drop-zone" id="dropZone">
+            <input id="fileInput" type="file" multiple accept=".env,.example,.txt,.js,.ts,.tsx,.jsx,.py,.go,.rb,.php,.json,.yml,.yaml">
+            <label for="fileInput">
+              <svg><use href="#icon-upload"></use></svg>
+              Drop files or choose files
+            </label>
+          </div>
+
+          <div class="settings-panel">
+            <div class="setting-row">
+              <label class="toggle">
+                <input id="strictMode" type="checkbox">
+                <span></span>
+                Strict
+              </label>
+              <label class="toggle">
+                <input id="scanSource" type="checkbox" checked>
+                <span></span>
+                Scan source
+              </label>
+            </div>
+            <div class="preset-grid" aria-label="Presets">
+              <label><input type="checkbox" value="nextjs" name="preset"> Next.js</label>
+              <label><input type="checkbox" value="vite" name="preset"> Vite</label>
+              <label><input type="checkbox" value="fastapi" name="preset"> FastAPI</label>
+              <label><input type="checkbox" value="django" name="preset"> Django</label>
+              <label><input type="checkbox" value="docker-compose" name="preset"> Docker</label>
+            </div>
+          </div>
+
+          <div class="editor-stack">
+            <label class="editor-panel">
+              <span>.env</span>
+              <textarea id="envInput" spellcheck="false" autocomplete="off"></textarea>
+            </label>
+            <label class="editor-panel">
+              <span>.env.example</span>
+              <textarea id="exampleInput" spellcheck="false" autocomplete="off"></textarea>
+            </label>
+            <label class="editor-panel">
+              <span>env.schema.yml</span>
+              <textarea id="schemaInput" spellcheck="false" autocomplete="off"></textarea>
+            </label>
+            <label class="editor-panel editor-panel-large">
+              <span>source snippets</span>
+              <textarea id="sourceInput" spellcheck="false" autocomplete="off"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="result-column" aria-live="polite">
+          <div class="metric-grid">
+            <div class="metric-tile score-tile">
+              <span>Score</span>
+              <strong id="scoreValue">100</strong>
+              <div class="meter"><span id="scoreMeter"></span></div>
+            </div>
+            <div class="metric-tile">
+              <span>Errors</span>
+              <strong id="errorCount">0</strong>
+            </div>
+            <div class="metric-tile">
+              <span>Warnings</span>
+              <strong id="warningCount">0</strong>
+            </div>
+            <div class="metric-tile">
+              <span>Info</span>
+              <strong id="infoCount">0</strong>
+            </div>
+          </div>
+
+          <div class="status-strip">
+            <div>
+              <span class="status-dot" id="statusDot"></span>
+              <strong id="statusTitle">Ready</strong>
+            </div>
+            <p id="statusText">Run an analysis to see the contract state.</p>
+          </div>
+
+          <section class="view-panel is-visible" id="view-issues">
+            <div class="panel-header">
+              <h2>Findings</h2>
+              <div class="segmented" aria-label="Severity filter">
+                <button type="button" class="segment is-active" data-filter="all">All</button>
+                <button type="button" class="segment" data-filter="error">Errors</button>
+                <button type="button" class="segment" data-filter="warning">Warnings</button>
+                <button type="button" class="segment" data-filter="info">Info</button>
+              </div>
+            </div>
+            <div id="issueList" class="issue-list"></div>
+          </section>
+
+          <section class="view-panel" id="view-variables">
+            <div class="panel-header">
+              <h2>Variables</h2>
+              <input class="search-input" id="variableSearch" type="search" placeholder="Filter keys">
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>Type</th>
+                    <th>Required</th>
+                    <th>Sources</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="variableRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="view-panel" id="view-explain">
+            <div class="panel-header">
+              <h2>Explain</h2>
+              <select id="explainKey"></select>
+            </div>
+            <div id="explainBody" class="explain-body"></div>
+          </section>
+
+          <section class="view-panel" id="view-docs">
+            <div class="panel-header">
+              <h2>Markdown Docs</h2>
+              <button class="tool-button compact" type="button" data-copy-target="docsOutput">
+                <svg><use href="#icon-copy"></use></svg>
+                Copy
+              </button>
+            </div>
+            <textarea id="docsOutput" class="output-box" readonly></textarea>
+          </section>
+
+          <section class="view-panel" id="view-export">
+            <div class="panel-header">
+              <h2>Export</h2>
+              <select id="exportFormat">
+                <option value="text">Text</option>
+                <option value="json">JSON</option>
+                <option value="github">GitHub</option>
+                <option value="sarif">SARIF</option>
+              </select>
+            </div>
+            <div class="export-actions">
+              <button class="tool-button compact" type="button" data-copy-target="exportOutput">
+                <svg><use href="#icon-copy"></use></svg>
+                Copy
+              </button>
+            </div>
+            <textarea id="exportOutput" class="output-box" readonly></textarea>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

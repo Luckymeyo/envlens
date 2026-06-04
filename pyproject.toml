@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "envlens"
-version = "0.2.0"
+version = "0.3.0"
 description = "Find missing, stale, unsafe, and mistyped environment variables before they break production."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,6 +33,7 @@ Repository = "https://github.com/Luckymeyo/envlens"
 Issues = "https://github.com/Luckymeyo/envlens/issues"
 Changelog = "https://github.com/Luckymeyo/envlens/blob/main/CHANGELOG.md"
 Schema = "https://raw.githubusercontent.com/Luckymeyo/envlens/main/schemas/env.schema.json"
+Demo = "https://luckymeyo.github.io/envlens/"
 
 [project.scripts]
 envlens = "envlens.cli:main"

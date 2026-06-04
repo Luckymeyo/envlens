@@ -2,7 +2,14 @@
 
 All notable changes to `envlens` will be documented in this file.
 
-## 0.2.0 - Unreleased
+## 0.3.0 - Unreleased
+
+- Added a static web workbench under `web/`.
+- Added browser-side env, schema, source scanning, issue filtering, variable review, explain view, docs generation, and export views.
+- Added GitHub Pages deployment workflow.
+- Added web demo documentation and static asset tests.
+
+## 0.2.0 - 2026-06-02
 
 - Added GitHub Action metadata with `action.yml`.
 - Added SARIF output for code-scanning workflows.
@@ -25,4 +32,3 @@ All notable changes to `envlens` will be documented in this file.
 - Added schema loading and validation.
 - Added text, JSON, and GitHub annotation output.
 - Added docs generation and schema inference.
-

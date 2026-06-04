@@ -12,6 +12,7 @@
 | `presets.py` | Framework preset definitions |
 | `analyzer.py` | Contract comparison and issue generation |
 | `report.py` | Text, JSON, GitHub, SARIF, docs, doctor, and explain output |
+| `web/` | Static browser workbench for quick env contract reviews |
 
 ## Data Flow
 
@@ -24,3 +25,8 @@
 
 The core package avoids required third-party runtime dependencies.
 
+## Web Workbench
+
+The web app is intentionally static: `web/index.html`, `web/styles.css`, and `web/app.js`.
+
+It mirrors the CLI's common parsing, scanning, comparison, and export behavior in browser JavaScript so contributors can try envlens without installing Python. The CLI remains the source of truth for CI and release testing.

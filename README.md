@@ -3,10 +3,13 @@
 [![CI](https://github.com/Luckymeyo/envlens/actions/workflows/ci.yml/badge.svg)](https://github.com/Luckymeyo/envlens/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
+[![Web Demo](https://img.shields.io/badge/web-demo-0f766e.svg)](https://luckymeyo.github.io/envlens/)
 
 Find missing, stale, unsafe, and mistyped environment variables before they break production.
 
 `envlens` treats environment variables like a contract. It scans your source code for env usage, compares that usage against `.env`, `.env.example`, and an optional typed schema, then reports drift in formats that work locally and in CI.
+
+Try the static web workbench: [luckymeyo.github.io/envlens](https://luckymeyo.github.io/envlens/).
 
 ```console
 $ envlens check
@@ -76,6 +79,16 @@ It is not trying to replace framework-specific runtime validation. It is the lay
 ## Adoption Modes
 
 You can adopt `envlens` gradually.
+
+### 0. Browser Workbench
+
+Paste env files, schema, and source snippets into the web workbench:
+
+```text
+https://luckymeyo.github.io/envlens/
+```
+
+Use this for quick reviews, screenshots, and demos before installing the CLI.
 
 ### 1. Documentation Mode
 
@@ -459,15 +472,15 @@ Preset keys are optional by default and can still be overridden in `env.schema.y
 
 ## Capability Matrix
 
-| Capability | Local CLI | GitHub Action | JSON | SARIF | Docs |
-| --- | --- | --- | --- | --- | --- |
-| Detect env usage in source | yes | yes | yes | yes | yes |
-| Compare code with `.env.example` | yes | yes | yes | yes | yes |
-| Validate typed values | yes | yes | yes | yes | yes |
-| Explain one variable | yes | no | no | no | no |
-| Generate Markdown docs | yes | no | no | no | yes |
-| Publish Code Scanning results | no | yes | no | yes | no |
-| Editor schema support | yes | no | yes | no | yes |
+| Capability | CLI | Web | GitHub Action | JSON | SARIF | Docs |
+| --- | --- | --- | --- | --- | --- | --- |
+| Detect env usage in source | yes | yes | yes | yes | yes | yes |
+| Compare code with `.env.example` | yes | yes | yes | yes | yes | yes |
+| Validate typed values | yes | yes | yes | yes | yes | yes |
+| Explain one variable | yes | yes | no | no | no | no |
+| Generate Markdown docs | yes | yes | no | no | no | yes |
+| Publish Code Scanning results | no | copy/export | yes | no | yes | no |
+| Editor schema support | yes | no | no | yes | no | yes |
 
 ## Documentation
 
@@ -476,6 +489,7 @@ Preset keys are optional by default and can still be overridden in `env.schema.y
 - [GitHub Action](docs/GITHUB_ACTION.md)
 - [SARIF Output](docs/SARIF.md)
 - [Editor Integration](docs/EDITOR_INTEGRATION.md)
+- [Web Demo](docs/WEB_DEMO.md)
 - [Presets](docs/PRESETS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Release Process](docs/RELEASE_PROCESS.md)
@@ -682,10 +696,17 @@ envlens/
     schema_json.py  published JSON Schema renderer
   examples/         sample app and schema
   schemas/          editor and automation schema files
+  web/              static browser workbench
   tests/            unit tests
 ```
 
 ## Roadmap
+
+Shipped in 0.3:
+
+- Static web workbench
+- Browser-side issue, variable, explain, docs, and export views
+- GitHub Pages deployment workflow
 
 Shipped in 0.2:
 
