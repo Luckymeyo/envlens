@@ -1,9 +1,15 @@
 # Roadmap
 
+## Shipped in 0.4
+
+- CLI profile comparison with `envlens compare BASE TARGET`.
+- Web profile comparison for `.env` and `.env.production`.
+- Secret-aware drift output that masks secret-looking values.
+
 ## Shipped in 0.3
 
 - Static browser workbench for paste-and-check env contract reviews.
-- Issues, variables, explain, fix-plan, generated-schema, docs, export, and CLI views.
+- Issues, variables, profile comparison, explain, fix-plan, generated-schema, docs, export, and CLI views.
 - Share links, downloads, ignored-key filters, and light/dark themes.
 - Browser-side support for text, JSON, GitHub annotation, and SARIF-style exports.
 - GitHub Pages deployment workflow.

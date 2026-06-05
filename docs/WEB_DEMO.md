@@ -26,6 +26,7 @@ https://luckymeyo.github.io/envlens/
 | --- | --- |
 | Issues | Filter findings by severity |
 | Variables | Review detected keys, sources, schema types, and status |
+| Profiles | Compare `.env` with `.env.production` |
 | Explain | Inspect one variable across env files, schema, source, and findings |
 | Fix Plan | Group findings into a remediation checklist |
 | Schema | Generate a starter `env.schema.yml` from detected variables |
@@ -36,6 +37,7 @@ https://luckymeyo.github.io/envlens/
 ## Features
 
 - Paste `.env`, `.env.example`, schema, and source snippets.
+- Compare local and production/staging profile files.
 - Drag files into the workbench.
 - Apply framework presets.
 - Ignore exact keys or wildcard prefixes such as `DYNAMIC_*`.

@@ -669,6 +669,15 @@ select {
   letter-spacing: 0.03em;
 }
 
+.profile-table .status-pill {
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+}
+
 .severity-pill.error {
   color: #991b1b;
   background: #fee2e2;
@@ -724,6 +733,29 @@ table {
   width: 100%;
   border-collapse: collapse;
   min-width: 680px;
+}
+
+.profile-table {
+  table-layout: fixed;
+  min-width: 720px;
+}
+
+.profile-table th:first-child,
+.profile-table td:first-child {
+  width: 27%;
+}
+
+.profile-table th:nth-child(2),
+.profile-table td:nth-child(2),
+.profile-table th:nth-child(3),
+.profile-table td:nth-child(3) {
+  width: 26%;
+  overflow-wrap: anywhere;
+}
+
+.profile-table th:last-child,
+.profile-table td:last-child {
+  width: 21%;
 }
 
 th,

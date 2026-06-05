@@ -66,6 +66,13 @@ const SAMPLE = {
     "PUBLIC_API_URL=https://api.example.com",
     "NEXT_PUBLIC_SECRET_KEY=replace-me",
   ].join("\n"),
+  profile: [
+    "DATABASE_URL=postgres://db.example.com:5432/envlens",
+    "NODE_ENV=production",
+    "PUBLIC_API_URL=https://api.example.com",
+    "NEXT_PUBLIC_SECRET_KEY=replace-me",
+    "REGION=us-east-1",
+  ].join("\n"),
   example: [
     "DATABASE_URL=postgres://localhost:5432/envlens",
     "PORT=3000",
@@ -126,6 +133,7 @@ const state = {
 
 const els = {
   envInput: document.getElementById("envInput"),
+  profileInput: document.getElementById("profileInput"),
   exampleInput: document.getElementById("exampleInput"),
   schemaInput: document.getElementById("schemaInput"),
   sourceInput: document.getElementById("sourceInput"),
@@ -134,6 +142,7 @@ const els = {
   ignoreKeys: document.getElementById("ignoreKeys"),
   issueList: document.getElementById("issueList"),
   variableRows: document.getElementById("variableRows"),
+  profileRows: document.getElementById("profileRows"),
   variableSearch: document.getElementById("variableSearch"),
   explainKey: document.getElementById("explainKey"),
   explainBody: document.getElementById("explainBody"),
@@ -357,6 +366,7 @@ function scanSource(text) {
 
 function analyze() {
   const envFile = parseEnv(els.envInput.value, ".env");
+  const profileFile = parseEnv(els.profileInput.value, ".env.production");
   const exampleFile = parseEnv(els.exampleInput.value, ".env.example");
   const schema = parseSchema(els.schemaInput.value);
   const ignoredKeys = parseIgnoredKeys(els.ignoreKeys.value);
@@ -370,13 +380,17 @@ function analyze() {
   });
 
   const usages = (els.scanSource.checked ? scanSource(els.sourceInput.value) : []).filter((usage) => !isIgnored(usage.key, ignoredKeys));
+  const profileFindings = compareProfiles(envFile, profileFile, schema);
   const issues = [];
   issues.push(...parseIssues(envFile, exampleFile, schema));
+  issues.push(...parseIssues(profileFile, null, { problems: [], specs: {} }));
   issues.push(...contractIssues(envFile, exampleFile, schema, usages));
+  issues.push(...profileIssues(profileFindings));
   const visibleIssues = issues.filter((issue) => !issue.key || !isIgnored(issue.key, ignoredKeys)).sort(issueSortKey);
 
   const keys = new Set([
     ...Object.keys(envFile.entries),
+    ...Object.keys(profileFile.entries),
     ...Object.keys(exampleFile.entries),
     ...Object.keys(schema.specs),
     ...usages.map((usage) => usage.key),
@@ -385,9 +399,11 @@ function analyze() {
 
   const analysis = {
     envFile,
+    profileFile,
     exampleFile,
     schema,
     usages,
+    profileFindings,
     issues: visibleIssues,
     keys: visibleKeys,
     ignoredKeys,
@@ -417,7 +433,7 @@ function isIgnored(key, ignoredKeys) {
 
 function parseIssues(envFile, exampleFile, schema) {
   const issues = [];
-  [envFile, exampleFile].forEach((file) => {
+  [envFile, exampleFile].filter(Boolean).forEach((file) => {
     file.problems.forEach((problem) => {
       issues.push({
         severity: "error",
@@ -556,6 +572,66 @@ function contractIssues(envFile, exampleFile, schema, usages) {
   issues.push(...caseCollisions(envFile));
   issues.push(...caseCollisions(exampleFile));
   return issues;
+}
+
+function compareProfiles(baseFile, targetFile, schema) {
+  if (!els.profileInput.value.trim()) {
+    return [];
+  }
+  const specs = schema.specs || {};
+  const keys = Array.from(new Set([
+    ...Object.keys(baseFile.entries),
+    ...Object.keys(targetFile.entries),
+    ...Object.keys(specs),
+  ])).sort();
+  return keys.map((key) => {
+    const spec = specs[key];
+    const baseEntry = baseFile.entries[key];
+    const targetEntry = targetFile.entries[key];
+    const required = spec ? spec.required : false;
+    let severity = "clean";
+    let status = "matched";
+    if (required && !targetEntry) {
+      severity = "error";
+      status = "missing required target";
+    } else if (baseEntry && !targetEntry) {
+      severity = required ? "error" : "warning";
+      status = "missing target";
+    } else if (targetEntry && !baseEntry) {
+      severity = "info";
+      status = "target only";
+    } else if (baseEntry && targetEntry && baseEntry.value !== targetEntry.value) {
+      severity = "warning";
+      status = "value drift";
+    }
+    return {
+      key,
+      severity,
+      status,
+      base: baseEntry ? maskedValue(key, baseEntry.value, spec) : "",
+      target: targetEntry ? maskedValue(key, targetEntry.value, spec) : "",
+    };
+  });
+}
+
+function profileIssues(profileFindings) {
+  return profileFindings
+    .filter((finding) => finding.severity !== "clean")
+    .map((finding) => ({
+      severity: finding.severity,
+      code: `profile-${finding.status.replace(/\s+/g, "-")}`,
+      key: finding.key,
+      message: `${finding.key}: ${finding.status} between .env and .env.production`,
+      path: ".env.production",
+      hint: "review the Profiles tab to confirm whether this drift is intentional",
+    }));
+}
+
+function maskedValue(key, value, spec) {
+  if (isSecretName(key, spec)) {
+    return value ? "<secret>" : "";
+  }
+  return value;
 }
 
 function validateEntry(entry, spec, inExample) {
@@ -772,6 +848,7 @@ function render() {
 
   renderIssues();
   renderVariables();
+  renderProfiles();
   renderExplain();
   renderFixPlan();
   els.schemaOutput.value = renderGeneratedSchema(analysis);
@@ -833,6 +910,37 @@ function renderVariables() {
   if (analysis.keys.includes(previous)) {
     els.explainKey.value = previous;
   }
+}
+
+function renderProfiles() {
+  const analysis = state.analysis;
+  if (!els.profileInput.value.trim()) {
+    els.profileRows.innerHTML = `<tr><td colspan="4" class="empty-state">Add a target profile to compare.</td></tr>`;
+    return;
+  }
+  const rows = analysis.profileFindings.map((finding) => {
+    const statusClass = finding.severity === "error" ? "problem" : finding.severity === "warning" ? "warn" : "clean";
+    return `
+      <tr>
+        <td class="key-cell">${escapeHtml(finding.key)}</td>
+        <td>${escapeHtml(finding.base || "-")}</td>
+        <td>${escapeHtml(finding.target || "-")}</td>
+        <td><span class="status-pill ${statusClass}">${escapeHtml(finding.status)}</span></td>
+      </tr>
+    `;
+  });
+  els.profileRows.innerHTML = rows.join("") || `<tr><td colspan="4" class="empty-state">No profile keys found.</td></tr>`;
+}
+
+function renderProfilesText(analysis) {
+  if (!els.profileInput.value.trim()) {
+    return "envlens profile comparison\n\nNo target profile provided.";
+  }
+  const lines = ["envlens profile comparison", ".env -> .env.production", ""];
+  analysis.profileFindings.forEach((finding) => {
+    lines.push(`${finding.status.toUpperCase().padEnd(24)} ${finding.key.padEnd(24)} .env=${finding.base || "-"} .env.production=${finding.target || "-"}`);
+  });
+  return lines.join("\n");
 }
 
 function renderExplain() {
@@ -981,6 +1089,9 @@ function renderCli(analysis) {
     "# Local check",
     `envlens check --env .env --example .env.example --schema env.schema.yml${presets}${ignores}${strict}`,
     "",
+    "# Compare profiles",
+    `envlens compare .env .env.production --schema env.schema.yml --show-values`,
+    "",
     "# GitHub annotations",
     `envlens check --format github --env .env --example .env.example --schema env.schema.yml${presets}${ignores}${strict}`,
     "",
@@ -1065,6 +1176,7 @@ function renderJson(analysis) {
     },
     issues: analysis.issues,
     usages: analysis.usages,
+    profiles: analysis.profileFindings,
   }, null, 2);
 }
 
@@ -1211,6 +1323,7 @@ function downloadText(text, filename) {
 function currentPayload() {
   return {
     env: els.envInput.value,
+    profile: els.profileInput.value,
     example: els.exampleInput.value,
     schema: els.schemaInput.value,
     source: els.sourceInput.value,
@@ -1262,6 +1375,7 @@ function showToast(message) {
 
 function loadSample() {
   els.envInput.value = SAMPLE.env;
+  els.profileInput.value = SAMPLE.profile;
   els.exampleInput.value = SAMPLE.example;
   els.schemaInput.value = SAMPLE.schema;
   els.sourceInput.value = SAMPLE.source;
@@ -1275,6 +1389,7 @@ function loadSample() {
 
 function clearAll() {
   els.envInput.value = "";
+  els.profileInput.value = "";
   els.exampleInput.value = "";
   els.schemaInput.value = "";
   els.sourceInput.value = "";
@@ -1318,6 +1433,7 @@ function restoreDraft() {
 
 function applyPayload(payload) {
   els.envInput.value = payload.env || "";
+  els.profileInput.value = payload.profile || "";
   els.exampleInput.value = payload.example || "";
   els.schemaInput.value = payload.schema || "";
   els.sourceInput.value = payload.source || "";
@@ -1342,6 +1458,8 @@ function assignFile(name, content) {
   const lower = name.toLowerCase();
   if (lower.includes("schema") && (lower.endsWith(".yml") || lower.endsWith(".yaml") || lower.endsWith(".json"))) {
     els.schemaInput.value = content;
+  } else if (lower.includes("prod") || lower.includes("staging") || lower.includes("production")) {
+    els.profileInput.value = content;
   } else if (lower.includes("example") || lower.endsWith(".env.example")) {
     els.exampleInput.value = content;
   } else if (lower === ".env" || lower.endsWith(".env") || lower.includes(".env.")) {
@@ -1362,7 +1480,7 @@ function wireEvents() {
   els.shareState.addEventListener("click", copyShareLink);
   els.themeToggle.addEventListener("click", toggleTheme);
 
-  [els.envInput, els.exampleInput, els.schemaInput, els.sourceInput, els.ignoreKeys].forEach((textarea) => {
+  [els.envInput, els.profileInput, els.exampleInput, els.schemaInput, els.sourceInput, els.ignoreKeys].forEach((textarea) => {
     textarea.addEventListener("input", debounce(analyze, 220));
   });
   [els.strictMode, els.scanSource, els.exportFormat, els.variableSearch, els.explainKey].forEach((input) => {
@@ -1399,6 +1517,8 @@ function wireEvents() {
     button.addEventListener("click", () => {
       if (button.dataset.copyRender === "fixplan") {
         copyText(renderFixPlanText(state.analysis));
+      } else if (button.dataset.copyRender === "profiles") {
+        copyText(renderProfilesText(state.analysis));
       }
     });
   });

@@ -57,6 +57,7 @@
         <nav class="view-tabs" aria-label="Result views">
           <button class="tab is-active" type="button" data-view="issues">Issues</button>
           <button class="tab" type="button" data-view="variables">Variables</button>
+          <button class="tab" type="button" data-view="profiles">Profiles</button>
           <button class="tab" type="button" data-view="explain">Explain</button>
           <button class="tab" type="button" data-view="fixplan">Fix Plan</button>
           <button class="tab" type="button" data-view="schema">Schema</button>
@@ -134,6 +135,10 @@
             <label class="editor-panel">
               <span>.env</span>
               <textarea id="envInput" spellcheck="false" autocomplete="off"></textarea>
+            </label>
+            <label class="editor-panel">
+              <span>.env.production</span>
+              <textarea id="profileInput" spellcheck="false" autocomplete="off"></textarea>
             </label>
             <label class="editor-panel">
               <span>.env.example</span>
@@ -217,6 +222,29 @@
                   </tr>
                 </thead>
                 <tbody id="variableRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="view-panel" id="view-profiles">
+            <div class="panel-header">
+              <h2>Profiles</h2>
+              <button class="tool-button compact" type="button" data-copy-render="profiles">
+                <svg><use href="#icon-copy"></use></svg>
+                Copy
+              </button>
+            </div>
+            <div class="table-wrap">
+              <table class="profile-table">
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>.env</th>
+                    <th>.env.production</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="profileRows"></tbody>
               </table>
             </div>
           </section>

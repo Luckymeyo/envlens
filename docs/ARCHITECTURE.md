@@ -6,6 +6,7 @@
 | --- | --- |
 | `cli.py` | Argument parsing and command routing |
 | `config.py` | `pyproject.toml` config loading |
+| `compare.py` | Env profile comparison |
 | `envfile.py` | Dotenv parsing |
 | `schema.py` | Schema loading and normalization |
 | `scanner.py` | Source-code env usage detection |
@@ -22,6 +23,8 @@
 4. Scan source files.
 5. Compare the contract.
 6. Render output.
+
+Profile comparison uses the same dotenv parser and optional schema metadata, then checks missing target keys, target-only keys, masked value drift, duplicate declarations, and schema-required coverage.
 
 The core package avoids required third-party runtime dependencies.
 

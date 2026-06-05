@@ -250,10 +250,23 @@ envlens check --format json
 envlens check --format github --strict
 envlens check --format sarif > envlens.sarif
 envlens check --preset nextjs --summary
+envlens compare .env .env.production --schema env.schema.yml
 envlens explain DATABASE_URL
 envlens list-presets
 envlens schema
 ```
+
+### `envlens compare`
+
+Compare two env profiles, such as local and production.
+
+```console
+envlens compare .env .env.production --schema env.schema.yml
+envlens compare .env .env.staging --format json
+envlens compare .env .env.production --show-values
+```
+
+Secret-looking values remain masked even when `--show-values` is used.
 
 ### `envlens docs`
 
@@ -476,6 +489,7 @@ Preset keys are optional by default and can still be overridden in `env.schema.y
 | --- | --- | --- | --- | --- | --- | --- |
 | Detect env usage in source | yes | yes | yes | yes | yes | yes |
 | Compare code with `.env.example` | yes | yes | yes | yes | yes | yes |
+| Compare env profiles | yes | yes | no | yes | no | no |
 | Validate typed values | yes | yes | yes | yes | yes | yes |
 | Explain one variable | yes | yes | no | no | no | no |
 | Generate Markdown docs | yes | yes | no | no | no | yes |
@@ -688,6 +702,7 @@ envlens/
   src/envlens/
     analyzer.py     contract comparison engine
     cli.py          command-line interface
+    compare.py      env profile comparison
     envfile.py      dotenv parser
     models.py       dataclasses used across the project
     report.py       text, JSON, GitHub, and docs renderers
@@ -705,7 +720,7 @@ envlens/
 Shipped in 0.3:
 
 - Static web workbench
-- Browser-side issue, variable, explain, fix plan, schema, docs, export, and CLI views
+- Browser-side issue, variable, profile comparison, explain, fix plan, schema, docs, export, and CLI views
 - Share links, downloads, ignored-key filters, and light/dark themes
 - GitHub Pages deployment workflow
 

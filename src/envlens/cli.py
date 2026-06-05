@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import __version__
 from .analyzer import analyze_project
+from .compare import compare_env_files, render_compare_json, render_compare_text
 from .config import EnvLensConfig, load_config
 from .report import (
     render_docs,
@@ -32,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
     add_check_parser(subparsers)
+    add_compare_parser(subparsers)
     add_docs_parser(subparsers)
     add_doctor_parser(subparsers)
     add_explain_parser(subparsers)
@@ -59,6 +61,15 @@ def add_check_parser(subparsers) -> None:
     parser.add_argument("--strict", action="store_true", default=None, help="Treat warnings as failures.")
     parser.add_argument("--summary", action="store_true", default=None, help="Write a GitHub step summary when possible.")
     parser.add_argument("--summary-file", help="Markdown summary file path. Defaults to GITHUB_STEP_SUMMARY.")
+
+
+def add_compare_parser(subparsers) -> None:
+    parser = subparsers.add_parser("compare", help="Compare two env profiles.")
+    parser.add_argument("base", help="Base env file, such as .env.")
+    parser.add_argument("target", help="Target env file, such as .env.production.")
+    parser.add_argument("--schema", help="Typed env schema file.")
+    parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format.")
+    parser.add_argument("--show-values", action="store_true", help="Show non-secret differing values.")
 
 
 def add_docs_parser(subparsers) -> None:
@@ -94,7 +105,7 @@ def add_schema_parser(subparsers) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"check", "docs", "doctor", "explain", "init-schema", "list-presets", "schema"}
+    commands = {"check", "compare", "docs", "doctor", "explain", "init-schema", "list-presets", "schema"}
     if not argv or (argv[0] not in commands and argv[0] not in {"-h", "--help", "--version"}):
         argv = ["check", *argv]
 
@@ -123,6 +134,14 @@ def main(argv: list[str] | None = None) -> int:
         if strict and analysis.warning_count:
             return 1
         return 0
+
+    if args.command == "compare":
+        comparison = compare_env_files(args.base, args.target, schema_path=args.schema, show_values=args.show_values)
+        if args.format == "json":
+            print(render_compare_json(comparison))
+        else:
+            print(render_compare_text(comparison))
+        return 1 if comparison.error_count else 0
 
     if args.command == "docs":
         print(render_docs(load_analysis(args, load_runtime_config(args))))

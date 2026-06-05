@@ -2,7 +2,12 @@
 
 All notable changes to `envlens` will be documented in this file.
 
-## 0.3.0 - Unreleased
+## 0.4.0 - Unreleased
+
+- Added `envlens compare BASE TARGET` for profile drift checks.
+- Added web support for comparing local and production-style env profiles.
+
+## 0.3.0 - 2026-06-04
 
 - Added a static web workbench under `web/`.
 - Added browser-side env, schema, source scanning, issue filtering, variable review, explain view, docs generation, and export views.
