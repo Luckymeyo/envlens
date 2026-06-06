@@ -2,7 +2,15 @@
 
 All notable changes to `envlens` will be documented in this file.
 
-## 0.4.0 - Unreleased
+## 0.5.0 - Unreleased
+
+- Added a major web workbench update with Risk Radar, Secret Exposure, CI Policy, Scan Timeline, and Share Card views.
+- Added local scan history with restore support in the web workbench.
+- Added configurable CI policy thresholds for errors, warnings, and minimum score.
+- Added richer web UI motion, responsive layouts, and polished insight cards.
+- Added JSON export fields for radar, secrets, and policy data.
+
+## 0.4.0 - 2026-06-05
 
 - Added `envlens compare BASE TARGET` for profile drift checks.
 - Added web support for comparing local and production-style env profiles.

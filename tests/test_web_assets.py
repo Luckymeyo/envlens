@@ -20,11 +20,53 @@ class WebAssetTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         html = (root / "web" / "index.html").read_text(encoding="utf-8")
 
-        for view in ["issues", "variables", "profiles", "explain", "fixplan", "schema", "docs", "export", "cli"]:
+        for view in [
+            "issues",
+            "radar",
+            "secrets",
+            "variables",
+            "profiles",
+            "policy",
+            "timeline",
+            "explain",
+            "fixplan",
+            "schema",
+            "share",
+            "docs",
+            "export",
+            "cli",
+        ]:
             self.assertIn(f'id="view-{view}"', html)
 
-        for control in ["profileInput", "ignoreKeys", "themeToggle", "shareState", "schemaOutput", "cliOutput"]:
+        for control in [
+            "profileInput",
+            "ignoreKeys",
+            "themeToggle",
+            "shareState",
+            "riskRadar",
+            "secretAuditBody",
+            "policyErrorLimit",
+            "historyBody",
+            "shareOutput",
+            "schemaOutput",
+            "cliOutput",
+        ]:
             self.assertIn(f'id="{control}"', html)
+
+    def test_static_web_app_includes_major_feature_renderers(self):
+        root = Path(__file__).resolve().parents[1]
+        app = (root / "web" / "app.js").read_text(encoding="utf-8")
+
+        for renderer in [
+            "renderRadar",
+            "renderSecrets",
+            "renderPolicy",
+            "renderTimeline",
+            "renderShare",
+            "buildSecretAudit",
+            "buildRiskRadar",
+        ]:
+            self.assertIn(f"function {renderer}", app)
 
     def test_static_web_app_avoids_remote_runtime_dependencies(self):
         root = Path(__file__).resolve().parents[1]

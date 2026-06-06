@@ -11,6 +11,14 @@ Find missing, stale, unsafe, and mistyped environment variables before they brea
 
 Try the static web workbench: [luckymeyo.github.io/envlens](https://luckymeyo.github.io/envlens/).
 
+The web workbench now includes a larger product-style review surface:
+
+- Risk Radar for contract, schema, secrets, profile, and source risk areas
+- Secret Exposure audit with strength scoring and public-prefix warnings
+- CI Policy builder with configurable error, warning, and score gates
+- Scan Timeline with local history and restore
+- Share Card for clean scan summaries
+
 ```console
 $ envlens check
 
@@ -490,6 +498,11 @@ Preset keys are optional by default and can still be overridden in `env.schema.y
 | Detect env usage in source | yes | yes | yes | yes | yes | yes |
 | Compare code with `.env.example` | yes | yes | yes | yes | yes | yes |
 | Compare env profiles | yes | yes | no | yes | no | no |
+| Review risk radar | no | yes | no | yes | no | no |
+| Audit secret exposure | partial | yes | no | yes | no | no |
+| Build CI policy gate | yes | yes | yes | yes | no | no |
+| Restore scan history | no | yes | no | no | no | no |
+| Generate share card | no | yes | no | no | no | no |
 | Validate typed values | yes | yes | yes | yes | yes | yes |
 | Explain one variable | yes | yes | no | no | no | no |
 | Generate Markdown docs | yes | yes | no | no | no | yes |
@@ -716,6 +729,19 @@ envlens/
 ```
 
 ## Roadmap
+
+Shipped in 0.5:
+
+- Risk Radar, Secret Exposure, CI Policy, Scan Timeline, and Share Card web views
+- Local scan history with restore support
+- Configurable web CI policy thresholds
+- UI/UX overhaul with animated panels, responsive insight cards, and richer dark mode polish
+
+Shipped in 0.4:
+
+- CLI profile comparison with `envlens compare BASE TARGET`
+- Web profile comparison for `.env` and `.env.production`
+- Secret-aware drift output that masks secret-looking values
 
 Shipped in 0.3:
 

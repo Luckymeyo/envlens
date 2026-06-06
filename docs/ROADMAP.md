@@ -1,5 +1,14 @@
 # Roadmap
 
+## Shipped in 0.5
+
+- Risk Radar view for contract, schema, secrets, profiles, and source risk.
+- Secret Exposure view with public-prefix and placeholder-strength review.
+- CI Policy view with configurable error, warning, and score thresholds.
+- Scan Timeline with local history and restore.
+- Share Card view for polished Markdown summaries.
+- Web UI/UX overhaul with animated panels, richer insight cards, responsive layouts, and refined dark mode.
+
 ## Shipped in 0.4
 
 - CLI profile comparison with `envlens compare BASE TARGET`.

@@ -33,3 +33,11 @@ The core package avoids required third-party runtime dependencies.
 The web app is intentionally static: `web/index.html`, `web/styles.css`, and `web/app.js`.
 
 It mirrors the CLI's common parsing, scanning, comparison, and export behavior in browser JavaScript so contributors can try envlens without installing Python. The CLI remains the source of truth for CI and release testing.
+
+The web workbench derives several higher-level review surfaces from one browser-side analysis object:
+
+- Risk Radar groups findings into contract, schema, secrets, profiles, and source risk.
+- Secret Exposure reviews secret-shaped keys, public prefixes, placeholder strength, and redaction advice.
+- CI Policy evaluates configurable error, warning, and score thresholds.
+- Scan Timeline stores recent local analysis payloads in browser storage for restore.
+- Share Card formats the current score, finding counts, and top radar areas for reporting.

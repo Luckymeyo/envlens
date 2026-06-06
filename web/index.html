@@ -56,11 +56,16 @@
 
         <nav class="view-tabs" aria-label="Result views">
           <button class="tab is-active" type="button" data-view="issues">Issues</button>
+          <button class="tab" type="button" data-view="radar">Radar</button>
+          <button class="tab" type="button" data-view="secrets">Secrets</button>
           <button class="tab" type="button" data-view="variables">Variables</button>
           <button class="tab" type="button" data-view="profiles">Profiles</button>
+          <button class="tab" type="button" data-view="policy">Policy</button>
+          <button class="tab" type="button" data-view="timeline">Timeline</button>
           <button class="tab" type="button" data-view="explain">Explain</button>
           <button class="tab" type="button" data-view="fixplan">Fix Plan</button>
           <button class="tab" type="button" data-view="schema">Schema</button>
+          <button class="tab" type="button" data-view="share">Share</button>
           <button class="tab" type="button" data-view="docs">Docs</button>
           <button class="tab" type="button" data-view="export">Export</button>
           <button class="tab" type="button" data-view="cli">CLI</button>
@@ -205,6 +210,28 @@
             <div id="issueList" class="issue-list"></div>
           </section>
 
+          <section class="view-panel" id="view-radar">
+            <div class="panel-header">
+              <h2>Risk Radar</h2>
+              <button class="tool-button compact" type="button" data-copy-render="radar">
+                <svg><use href="#icon-copy"></use></svg>
+                Copy
+              </button>
+            </div>
+            <div id="riskRadar" class="radar-grid"></div>
+          </section>
+
+          <section class="view-panel" id="view-secrets">
+            <div class="panel-header">
+              <h2>Secret Exposure</h2>
+              <button class="tool-button compact" type="button" data-copy-render="secrets">
+                <svg><use href="#icon-copy"></use></svg>
+                Copy
+              </button>
+            </div>
+            <div id="secretAuditBody" class="insight-list"></div>
+          </section>
+
           <section class="view-panel" id="view-variables">
             <div class="panel-header">
               <h2>Variables</h2>
@@ -249,6 +276,45 @@
             </div>
           </section>
 
+          <section class="view-panel" id="view-policy">
+            <div class="panel-header">
+              <h2>CI Policy</h2>
+              <button class="tool-button compact" type="button" data-copy-render="policy">
+                <svg><use href="#icon-copy"></use></svg>
+                Copy
+              </button>
+            </div>
+            <div class="policy-controls">
+              <label>
+                <span>Allowed errors</span>
+                <input id="policyErrorLimit" type="number" min="0" max="20" value="0">
+              </label>
+              <label>
+                <span>Allowed warnings</span>
+                <input id="policyWarningLimit" type="number" min="0" max="50" value="0">
+              </label>
+              <label>
+                <span>Minimum score</span>
+                <input id="policyScoreFloor" type="number" min="0" max="100" value="85">
+              </label>
+            </div>
+            <div id="policyBody" class="policy-body"></div>
+          </section>
+
+          <section class="view-panel" id="view-timeline">
+            <div class="panel-header">
+              <h2>Scan Timeline</h2>
+              <div class="panel-actions">
+                <button class="tool-button compact" type="button" data-copy-render="timeline">
+                  <svg><use href="#icon-copy"></use></svg>
+                  Copy
+                </button>
+                <button class="tool-button compact" type="button" id="clearHistory">Clear</button>
+              </div>
+            </div>
+            <div id="historyBody" class="timeline-list"></div>
+          </section>
+
           <section class="view-panel" id="view-explain">
             <div class="panel-header">
               <h2>Explain</h2>
@@ -283,6 +349,24 @@
               </div>
             </div>
             <textarea id="schemaOutput" class="output-box" readonly></textarea>
+          </section>
+
+          <section class="view-panel" id="view-share">
+            <div class="panel-header">
+              <h2>Share Card</h2>
+              <div class="panel-actions">
+                <button class="tool-button compact" type="button" data-copy-render="share">
+                  <svg><use href="#icon-copy"></use></svg>
+                  Copy
+                </button>
+                <button class="tool-button compact" type="button" data-download-target="shareOutput" data-filename="envlens-share-card.md">
+                  <svg><use href="#icon-download"></use></svg>
+                  Download
+                </button>
+              </div>
+            </div>
+            <div id="shareCard" class="share-card"></div>
+            <textarea id="shareOutput" class="output-box compact-output" readonly></textarea>
           </section>
 
           <section class="view-panel" id="view-docs">

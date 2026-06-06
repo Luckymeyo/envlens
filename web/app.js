@@ -19,6 +19,8 @@ const PLACEHOLDER_VALUES = new Set([
   "your-api-key",
   "your_api_key",
 ]);
+const HISTORY_LIMIT = 8;
+const DEFAULT_POLICY = { errors: 0, warnings: 0, score: 85 };
 
 const PRESETS = {
   nextjs: {
@@ -129,6 +131,8 @@ const state = {
   filter: "all",
   activeView: "issues",
   theme: "light",
+  history: [],
+  policy: { ...DEFAULT_POLICY },
 };
 
 const els = {
@@ -141,8 +145,18 @@ const els = {
   scanSource: document.getElementById("scanSource"),
   ignoreKeys: document.getElementById("ignoreKeys"),
   issueList: document.getElementById("issueList"),
+  riskRadar: document.getElementById("riskRadar"),
+  secretAuditBody: document.getElementById("secretAuditBody"),
   variableRows: document.getElementById("variableRows"),
   profileRows: document.getElementById("profileRows"),
+  policyErrorLimit: document.getElementById("policyErrorLimit"),
+  policyWarningLimit: document.getElementById("policyWarningLimit"),
+  policyScoreFloor: document.getElementById("policyScoreFloor"),
+  policyBody: document.getElementById("policyBody"),
+  historyBody: document.getElementById("historyBody"),
+  clearHistory: document.getElementById("clearHistory"),
+  shareCard: document.getElementById("shareCard"),
+  shareOutput: document.getElementById("shareOutput"),
   variableSearch: document.getElementById("variableSearch"),
   explainKey: document.getElementById("explainKey"),
   explainBody: document.getElementById("explainBody"),
@@ -410,7 +424,14 @@ function analyze() {
     selectedPresets,
     strict: els.strictMode.checked,
   };
+  analysis.counts = countSeverities(visibleIssues);
+  analysis.score = scoreForCounts(analysis.counts);
+  analysis.radar = buildRiskRadar(analysis);
+  analysis.secretAudit = buildSecretAudit(analysis);
+  analysis.policy = evaluatePolicy(analysis);
+  analysis.share = buildShareCard(analysis);
   state.analysis = analysis;
+  recordHistory(analysis);
   render();
   saveDraft();
 }
@@ -824,13 +845,193 @@ function caseCollisions(file) {
     }));
 }
 
+function scoreForCounts(counts) {
+  return Math.max(0, 100 - counts.error * 20 - counts.warning * 8 - counts.info * 2);
+}
+
+function buildRiskRadar(analysis) {
+  const buckets = [
+    { name: "Contract", match: (issue) => ["missing-in-env", "missing-in-example", "undocumented-env", "unused-example"].includes(issue.code) },
+    { name: "Schema", match: (issue) => ["schema-missing-used", "schema-unused", "schema-parse-error", "type-mismatch", "invalid-enum"].includes(issue.code) },
+    { name: "Secrets", match: (issue) => ["public-secret-name", "weak-secret"].includes(issue.code) },
+    { name: "Profiles", match: (issue) => issue.code.startsWith("profile-") },
+    { name: "Source", match: (issue) => Boolean(issue.path && !issue.path.startsWith(".env") && !issue.code.startsWith("profile-")) },
+  ];
+  return buckets.map((bucket) => {
+    const issues = analysis.issues.filter(bucket.match);
+    const counts = countSeverities(issues);
+    return {
+      name: bucket.name,
+      counts,
+      score: scoreForCounts(counts),
+      issues: issues.slice(0, 5),
+    };
+  });
+}
+
+function buildSecretAudit(analysis) {
+  const files = [
+    { label: ".env", file: analysis.envFile },
+    { label: ".env.production", file: analysis.profileFile },
+    { label: ".env.example", file: analysis.exampleFile },
+  ];
+  const rows = [];
+  analysis.keys.forEach((key) => {
+    const spec = analysis.schema.specs[key];
+    const secretLike = isSecretName(key, spec);
+    const publicLike = isPublicName(key, spec);
+    const entries = files
+      .map(({ label, file }) => ({ label, entry: file.entries[key] }))
+      .filter((item) => item.entry);
+    const values = entries.map((item) => item.entry.value).filter(Boolean);
+    const reasons = [];
+    if (secretLike) reasons.push("secret name");
+    if (publicLike) reasons.push("public prefix");
+    values.forEach((value) => {
+      if (secretLike && weakSecretValue(value)) reasons.push("weak or placeholder value");
+      if (publicLike && looksLikeRealSecret(value)) reasons.push("public variable carries secret-shaped data");
+    });
+    if (!reasons.length) {
+      return;
+    }
+    const hasError = publicLike && (secretLike || values.some(looksLikeRealSecret));
+    const hasWarning = values.some((value) => secretLike && weakSecretValue(value));
+    rows.push({
+      key,
+      severity: hasError ? "error" : hasWarning ? "warning" : "info",
+      exposure: entries.map((item) => item.label).join(", ") || "schema only",
+      entropy: values.length ? Math.max(...values.map(secretStrengthScore)) : 0,
+      reasons: Array.from(new Set(reasons)),
+      advice: hasError ? "Move this key server-side or rename it so client bundles cannot expose it." : hasWarning ? "Replace placeholders before deployment." : "Document handling rules and keep values redacted in shared output.",
+    });
+  });
+  return rows.sort((a, b) => issueSortKey({ severity: a.severity, code: "secret", key: a.key }, { severity: b.severity, code: "secret", key: b.key }));
+}
+
+function secretStrengthScore(value) {
+  const text = String(value || "");
+  if (!text) return 0;
+  const unique = new Set(text).size;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((regex) => regex.test(text)).length;
+  return Math.min(100, Math.round(text.length * 2.4 + unique * 1.7 + classes * 8));
+}
+
+function currentPolicy() {
+  const readNumber = (input, fallback) => {
+    const value = Number(input && input.value);
+    return Number.isFinite(value) ? Math.max(0, Math.round(value)) : fallback;
+  };
+  return {
+    errors: readNumber(els.policyErrorLimit, DEFAULT_POLICY.errors),
+    warnings: readNumber(els.policyWarningLimit, DEFAULT_POLICY.warnings),
+    score: Math.min(100, readNumber(els.policyScoreFloor, DEFAULT_POLICY.score)),
+  };
+}
+
+function applyPolicy(policy) {
+  state.policy = { ...DEFAULT_POLICY, ...(policy || {}) };
+  els.policyErrorLimit.value = state.policy.errors;
+  els.policyWarningLimit.value = state.policy.warnings;
+  els.policyScoreFloor.value = state.policy.score;
+}
+
+function evaluatePolicy(analysis) {
+  const policy = currentPolicy();
+  const counts = analysis.counts || countSeverities(analysis.issues);
+  const score = analysis.score ?? scoreForCounts(counts);
+  const checks = [
+    { label: "Errors", actual: counts.error, target: policy.errors, pass: counts.error <= policy.errors },
+    { label: "Warnings", actual: counts.warning, target: policy.warnings, pass: counts.warning <= policy.warnings },
+    { label: "Score", actual: score, target: policy.score, pass: score >= policy.score },
+  ];
+  const passes = checks.every((check) => check.pass);
+  return {
+    policy,
+    passes,
+    checks,
+    command: `envlens check --env .env --example .env.example --schema env.schema.yml${policy.warnings === 0 ? " --strict" : ""}`,
+  };
+}
+
+function buildShareCard(analysis) {
+  const counts = analysis.counts || countSeverities(analysis.issues);
+  const score = analysis.score ?? scoreForCounts(counts);
+  const radar = analysis.radar || buildRiskRadar(analysis);
+  const topRisks = radar
+    .filter((bucket) => bucket.issues.length)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 3);
+  return {
+    score,
+    counts,
+    keys: analysis.keys.length,
+    usages: analysis.usages.length,
+    topRisks,
+    headline: score >= 90 ? "Environment contract is healthy" : score >= 70 ? "Environment contract needs review" : "Environment contract needs action",
+  };
+}
+
+function readHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("envlens-web-history") || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writeHistory() {
+  localStorage.setItem("envlens-web-history", JSON.stringify(state.history.slice(0, HISTORY_LIMIT)));
+}
+
+function historyFingerprint(analysis) {
+  return JSON.stringify({
+    payload: currentPayload(),
+    counts: analysis.counts,
+    keys: analysis.keys.length,
+    usages: analysis.usages.length,
+  });
+}
+
+function recordHistory(analysis) {
+  const fingerprint = historyFingerprint(analysis);
+  const previous = state.history[0];
+  if (previous && previous.fingerprint === fingerprint) {
+    previous.time = new Date().toISOString();
+    writeHistory();
+    return;
+  }
+  state.history.unshift({
+    id: String(Date.now()),
+    time: new Date().toISOString(),
+    score: analysis.score,
+    counts: analysis.counts,
+    keys: analysis.keys.length,
+    usages: analysis.usages.length,
+    fingerprint,
+    payload: currentPayload(),
+  });
+  state.history = state.history.slice(0, HISTORY_LIMIT);
+  writeHistory();
+}
+
+function restoreHistoryItem(id) {
+  const item = state.history.find((entry) => entry.id === id);
+  if (!item) {
+    return;
+  }
+  applyPayload(item.payload);
+  analyze();
+  showToast("Restored scan");
+}
+
 function render() {
   const analysis = state.analysis;
   if (!analysis) {
     return;
   }
-  const counts = countSeverities(analysis.issues);
-  const score = Math.max(0, 100 - counts.error * 20 - counts.warning * 8 - counts.info * 2);
+  const counts = analysis.counts || countSeverities(analysis.issues);
+  const score = analysis.score ?? scoreForCounts(counts);
   els.scoreValue.textContent = String(score);
   els.scoreMeter.style.width = `${score}%`;
   els.errorCount.textContent = String(counts.error);
@@ -847,11 +1048,16 @@ function render() {
     : `${analysis.keys.length} keys, ${analysis.usages.length} source usages, ${analysis.issues.length} findings.`;
 
   renderIssues();
+  renderRadar();
+  renderSecrets();
   renderVariables();
   renderProfiles();
+  renderPolicy();
+  renderTimeline();
   renderExplain();
   renderFixPlan();
   els.schemaOutput.value = renderGeneratedSchema(analysis);
+  renderShare();
   els.docsOutput.value = renderDocs(analysis);
   els.cliOutput.value = renderCli(analysis);
   renderExport();
@@ -877,6 +1083,74 @@ function renderIssues() {
       </div>
     </article>
   `).join("");
+}
+
+function renderRadar() {
+  const analysis = state.analysis;
+  els.riskRadar.innerHTML = analysis.radar.map((bucket) => {
+    const severity = bucket.counts.error ? "error" : bucket.counts.warning ? "warning" : bucket.counts.info ? "info" : "clean";
+    return `
+      <article class="radar-card ${severity}">
+        <div class="radar-head">
+          <h3>${escapeHtml(bucket.name)}</h3>
+          <strong>${bucket.score}</strong>
+        </div>
+        <div class="meter slim"><span style="width: ${bucket.score}%"></span></div>
+        <p>${bucket.counts.error} errors, ${bucket.counts.warning} warnings, ${bucket.counts.info} info</p>
+        <ul>
+          ${bucket.issues.length ? bucket.issues.map((issue) => `<li>${escapeHtml(issue.key || issue.code)}: ${escapeHtml(issue.message)}</li>`).join("") : "<li>No active risk in this area.</li>"}
+        </ul>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderRadarText(analysis) {
+  const lines = ["envlens risk radar", ""];
+  analysis.radar.forEach((bucket) => {
+    lines.push(`${bucket.name}: ${bucket.score}/100 (${bucket.counts.error} errors, ${bucket.counts.warning} warnings, ${bucket.counts.info} info)`);
+    bucket.issues.slice(0, 3).forEach((issue) => lines.push(`- ${issue.key || issue.code}: ${issue.message}`));
+    lines.push("");
+  });
+  return lines.join("\n").trimEnd();
+}
+
+function renderSecrets() {
+  const analysis = state.analysis;
+  if (!analysis.secretAudit.length) {
+    els.secretAuditBody.innerHTML = `<div class="empty-state">No secret-shaped or public exposure risks detected.</div>`;
+    return;
+  }
+  els.secretAuditBody.innerHTML = analysis.secretAudit.map((item) => `
+    <article class="insight-card ${escapeHtml(item.severity)}">
+      <div>
+        <span class="severity-pill ${escapeHtml(item.severity)}">${escapeHtml(item.severity)}</span>
+      </div>
+      <div>
+        <h3>${escapeHtml(item.key)} <span class="source-pill">${escapeHtml(item.exposure)}</span></h3>
+        <p>${escapeHtml(item.reasons.join(", "))}</p>
+        <div class="strength-row">
+          <span>Strength</span>
+          <div class="meter slim"><span style="width: ${item.entropy}%"></span></div>
+          <strong>${item.entropy}</strong>
+        </div>
+        <p>${escapeHtml(item.advice)}</p>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderSecretsText(analysis) {
+  if (!analysis.secretAudit.length) {
+    return "envlens secret exposure\n\nNo secret-shaped or public exposure risks detected.";
+  }
+  const lines = ["envlens secret exposure", ""];
+  analysis.secretAudit.forEach((item) => {
+    lines.push(`${item.severity.toUpperCase()} ${item.key} (${item.exposure})`);
+    lines.push(`- ${item.reasons.join(", ")}`);
+    lines.push(`- ${item.advice}`);
+  });
+  return lines.join("\n");
 }
 
 function renderVariables() {
@@ -940,6 +1214,121 @@ function renderProfilesText(analysis) {
   analysis.profileFindings.forEach((finding) => {
     lines.push(`${finding.status.toUpperCase().padEnd(24)} ${finding.key.padEnd(24)} .env=${finding.base || "-"} .env.production=${finding.target || "-"}`);
   });
+  return lines.join("\n");
+}
+
+function renderPolicy() {
+  const analysis = state.analysis;
+  analysis.policy = evaluatePolicy(analysis);
+  const policy = analysis.policy;
+  els.policyBody.innerHTML = `
+    <div class="policy-summary ${policy.passes ? "clean" : "problem"}">
+      <strong>${policy.passes ? "Gate passes" : "Gate fails"}</strong>
+      <p>${policy.passes ? "This contract satisfies the selected CI limits." : "Tighten the contract or loosen the policy before merging."}</p>
+    </div>
+    <div class="policy-checks">
+      ${policy.checks.map((check) => `
+        <article class="policy-check ${check.pass ? "clean" : "problem"}">
+          <span>${escapeHtml(check.label)}</span>
+          <strong>${escapeHtml(check.actual)} / ${escapeHtml(check.target)}</strong>
+        </article>
+      `).join("")}
+    </div>
+    <pre class="code-preview">${escapeHtml(renderPolicyText(analysis))}</pre>
+  `;
+}
+
+function renderPolicyText(analysis) {
+  const policy = analysis.policy || evaluatePolicy(analysis);
+  const strictLine = policy.policy.warnings === 0 ? "          strict: \"true\"" : "          strict: \"false\"";
+  return [
+    "envlens CI policy",
+    `status: ${policy.passes ? "pass" : "fail"}`,
+    `limits: errors <= ${policy.policy.errors}, warnings <= ${policy.policy.warnings}, score >= ${policy.policy.score}`,
+    "",
+    "# CLI",
+    policy.command,
+    "",
+    "# GitHub Actions",
+    "name: envlens",
+    "on: [pull_request]",
+    "jobs:",
+    "  envlens:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - uses: actions/checkout@v5",
+    "      - uses: Luckymeyo/envlens@main",
+    "        with:",
+    "          path: .",
+    "          format: github",
+    strictLine,
+    "          summary: \"true\"",
+  ].join("\n");
+}
+
+function renderTimeline() {
+  if (!state.history.length) {
+    els.historyBody.innerHTML = `<div class="empty-state">Run an analysis to start a local scan timeline.</div>`;
+    return;
+  }
+  els.historyBody.innerHTML = state.history.map((item, index) => `
+    <article class="timeline-item">
+      <div class="timeline-index">${index + 1}</div>
+      <div>
+        <h3>${formatTime(item.time)} <span class="source-pill">${item.keys} keys</span></h3>
+        <p>Score ${item.score}. ${item.counts.error} errors, ${item.counts.warning} warnings, ${item.counts.info} info. ${item.usages} source usages.</p>
+      </div>
+      <button class="tool-button compact" type="button" data-restore-history="${escapeHtml(item.id)}">Restore</button>
+    </article>
+  `).join("");
+}
+
+function renderTimelineText() {
+  if (!state.history.length) {
+    return "envlens scan timeline\n\nNo local scans recorded.";
+  }
+  const lines = ["envlens scan timeline", ""];
+  state.history.forEach((item) => {
+    lines.push(`${formatTime(item.time)} score=${item.score} errors=${item.counts.error} warnings=${item.counts.warning} info=${item.counts.info} keys=${item.keys} usages=${item.usages}`);
+  });
+  return lines.join("\n");
+}
+
+function renderShare() {
+  const analysis = state.analysis;
+  const share = analysis.share || buildShareCard(analysis);
+  els.shareCard.innerHTML = `
+    <div class="share-score">
+      <span>envlens</span>
+      <strong>${share.score}</strong>
+    </div>
+    <div>
+      <h3>${escapeHtml(share.headline)}</h3>
+      <p>${share.counts.error} errors, ${share.counts.warning} warnings, ${share.counts.info} info across ${share.keys} keys and ${share.usages} source usages.</p>
+      <div class="share-risk-list">
+        ${share.topRisks.length ? share.topRisks.map((bucket) => `<span>${escapeHtml(bucket.name)} ${bucket.score}</span>`).join("") : "<span>All radar areas clean</span>"}
+      </div>
+    </div>
+  `;
+  els.shareOutput.value = renderShareText(analysis);
+}
+
+function renderShareText(analysis) {
+  const share = analysis.share || buildShareCard(analysis);
+  const lines = [
+    "# envlens scan card",
+    "",
+    `Score: ${share.score}/100`,
+    `Findings: ${share.counts.error} errors, ${share.counts.warning} warnings, ${share.counts.info} info`,
+    `Scope: ${share.keys} keys, ${share.usages} source usages`,
+    "",
+    "Top radar areas:",
+  ];
+  if (share.topRisks.length) {
+    share.topRisks.forEach((bucket) => lines.push(`- ${bucket.name}: ${bucket.score}/100`));
+  } else {
+    lines.push("- All radar areas clean");
+  }
   return lines.join("\n");
 }
 
@@ -1092,6 +1481,9 @@ function renderCli(analysis) {
     "# Compare profiles",
     `envlens compare .env .env.production --schema env.schema.yml --show-values`,
     "",
+    "# Policy gate",
+    (analysis.policy || evaluatePolicy(analysis)).command,
+    "",
     "# GitHub annotations",
     `envlens check --format github --env .env --example .env.example --schema env.schema.yml${presets}${ignores}${strict}`,
     "",
@@ -1177,6 +1569,9 @@ function renderJson(analysis) {
     issues: analysis.issues,
     usages: analysis.usages,
     profiles: analysis.profileFindings,
+    radar: analysis.radar,
+    secrets: analysis.secretAudit,
+    policy: analysis.policy,
   }, null, 2);
 }
 
@@ -1272,6 +1667,19 @@ function titleCase(text) {
   return text.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatTime(value) {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch (_error) {
+    return value;
+  }
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1331,6 +1739,7 @@ function currentPayload() {
     strict: els.strictMode.checked,
     scan: els.scanSource.checked,
     theme: state.theme,
+    policy: currentPolicy(),
     presets: Array.from(document.querySelectorAll("input[name='preset']:checked")).map((input) => input.value),
   };
 }
@@ -1380,6 +1789,7 @@ function loadSample() {
   els.schemaInput.value = SAMPLE.schema;
   els.sourceInput.value = SAMPLE.source;
   els.ignoreKeys.value = "";
+  applyPolicy(DEFAULT_POLICY);
   document.querySelectorAll("input[name='preset']").forEach((input) => {
     input.checked = false;
   });
@@ -1394,6 +1804,7 @@ function clearAll() {
   els.schemaInput.value = "";
   els.sourceInput.value = "";
   els.ignoreKeys.value = "";
+  applyPolicy(DEFAULT_POLICY);
   document.querySelectorAll("input[name='preset']").forEach((input) => {
     input.checked = false;
   });
@@ -1405,6 +1816,7 @@ function saveDraft() {
 }
 
 function restoreDraft() {
+  state.history = readHistory();
   const hashMatch = window.location.hash.match(/^#state=(.+)$/);
   const raw = hashMatch ? null : localStorage.getItem("envlens-web-draft");
   if (hashMatch) {
@@ -1441,6 +1853,7 @@ function applyPayload(payload) {
   els.strictMode.checked = Boolean(payload.strict);
   els.scanSource.checked = payload.scan !== false;
   setTheme(payload.theme || localStorage.getItem("envlens-web-theme") || "light");
+  applyPolicy(payload.policy || DEFAULT_POLICY);
   document.querySelectorAll("input[name='preset']").forEach((input) => {
     input.checked = (payload.presets || []).includes(input.value);
   });
@@ -1479,9 +1892,26 @@ function wireEvents() {
   document.getElementById("copySummary").addEventListener("click", () => copyText(renderText(state.analysis)));
   els.shareState.addEventListener("click", copyShareLink);
   els.themeToggle.addEventListener("click", toggleTheme);
+  els.clearHistory.addEventListener("click", () => {
+    state.history = [];
+    writeHistory();
+    renderTimeline();
+    showToast("Timeline cleared");
+  });
 
   [els.envInput, els.profileInput, els.exampleInput, els.schemaInput, els.sourceInput, els.ignoreKeys].forEach((textarea) => {
     textarea.addEventListener("input", debounce(analyze, 220));
+  });
+  [els.policyErrorLimit, els.policyWarningLimit, els.policyScoreFloor].forEach((input) => {
+    input.addEventListener("input", () => {
+      state.policy = currentPolicy();
+      if (state.analysis) {
+        state.analysis.policy = evaluatePolicy(state.analysis);
+        renderPolicy();
+        renderShare();
+        saveDraft();
+      }
+    });
   });
   [els.strictMode, els.scanSource, els.exportFormat, els.variableSearch, els.explainKey].forEach((input) => {
     input.addEventListener("input", input === els.exportFormat ? () => {
@@ -1519,6 +1949,16 @@ function wireEvents() {
         copyText(renderFixPlanText(state.analysis));
       } else if (button.dataset.copyRender === "profiles") {
         copyText(renderProfilesText(state.analysis));
+      } else if (button.dataset.copyRender === "radar") {
+        copyText(renderRadarText(state.analysis));
+      } else if (button.dataset.copyRender === "secrets") {
+        copyText(renderSecretsText(state.analysis));
+      } else if (button.dataset.copyRender === "policy") {
+        copyText(renderPolicyText(state.analysis));
+      } else if (button.dataset.copyRender === "timeline") {
+        copyText(renderTimelineText());
+      } else if (button.dataset.copyRender === "share") {
+        copyText(renderShareText(state.analysis));
       }
     });
   });
@@ -1543,6 +1983,12 @@ function wireEvents() {
     });
   });
   els.dropZone.addEventListener("drop", (event) => handleFiles(event.dataTransfer.files));
+  els.historyBody.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-restore-history]");
+    if (button) {
+      restoreHistoryItem(button.dataset.restoreHistory);
+    }
+  });
 }
 
 function updateExportDownloadName() {
